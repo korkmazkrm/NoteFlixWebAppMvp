@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>NoteFlix – MVP v5.4 (Offline-first + Cold Start Import)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="NoteFlix MVP v5.4: Offline-first Quill + Google Drive + E2E + OPFS + LRU + Dexie (cold start import; fixed appDataFolder 403)" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Google+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0b0c10;--fg:#e6edf3;--muted:#9fb0bf;--card:#111318;--line:#20232b;--accent:#2ea043;}
+    *{box-sizing:border-box}
+    body{margin:0; font:14px/1.5 'Google Sans', 'Roboto', system-ui,-apple-system,Segoe UI,Arial; background:var(--bg); color:var(--fg);}
+    header{padding:16px; border-bottom:1px solid var(--line); background:var(--card); position:sticky; top:0; z-index:5;}
+    h1{margin:0 0 8px 0; font-size:18px;}
+    .row{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0;}
+    label{font-weight:600; color:var(--muted)}
+    input[type=text], input[type=password]{padding:8px 10px; background:#0f1116; color:var(--fg); border:1px solid var(--line); border-radius:8px; min-width:220px;}
+    input::placeholder{color:#6a7a8a}
+    input:focus{outline:none; border-color:var(--accent)}
+    .title-input{border:none !important; font-size:20px; font-weight:500; padding:0; background:transparent !important; width:100%; outline:none !important; box-shadow:none !important;}
+    .title-input:focus{border:none !important; background:transparent !important; outline:none !important; box-shadow:none !important;}
+    .title-input:hover{border:none !important; background:transparent !important;}
+    .title-input:active{border:none !important; background:transparent !important;}
+    button{padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:#171a21; color:#fff; cursor:pointer}
+    button.primary{background:var(--accent); border-color:transparent; color:#08130b; font-weight:700}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .pill{padding:3px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:var(--muted)}
+    #toolbar{border:1px solid var(--line); border-radius:10px 10px 0 0; background:#0f1116}
+    #editor{height:320px; background:#0f1116; border:1px solid var(--line); border-top:none; border-radius:0 0 10px 10px}
+    main{padding:16px}
+    .pane{display:grid; grid-template-columns: 1.3fr .7fr; gap:16px;}
+    .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px;}
+    table{width:100%; border-collapse:collapse;}
+    th,td{padding:8px; border-bottom:1px solid var(--line);}
+    tr:hover{background:#0f1116}
+    .muted{color:var(--muted)}
+    .ok{color:#2ea043}
+    .warn{color:#d29922}
+    .err{color:#f85149}
+    #status{white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; background:#0f1116; border:1px solid var(--line); border-radius:10px; padding:8px; max-height:220px; overflow:auto}
+    .list-actions{display:flex; gap:6px; align-items:center}
+    .list-filter{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+    
+    /* Modal Styles */
+    .modal{position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; display:flex; align-items:center; justify-content:center}
+    .modal-content{background:var(--card); border:1px solid var(--line); border-radius:12px; width:90%; max-width:800px; max-height:90%; display:flex; flex-direction:column}
+    .modal-header{display:flex; align-items:center; padding:16px; border-bottom:1px solid var(--line); gap:12px}
+    .modal-body{flex:1; padding:16px; overflow:auto}
+    .modal-footer{display:flex; gap:8px; padding:16px; border-top:1px solid var(--line); justify-content:flex-end}
+    .close-btn{background:none; border:none; color:var(--muted); font-size:24px; cursor:pointer; padding:0; width:32px; height:32px; display:flex; align-items:center; justify-content:center}
+    .close-btn:hover{color:var(--fg)}
+    
+    /* FAB Styles */
+    .fab{position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; background:var(--accent); border:none; color:#08130b; font-size:24px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:999; display:flex; align-items:center; justify-content:center; transition:transform 0.2s}
+    .fab:hover{transform:scale(1.1)}
+    .fab i{font-style:normal; font-weight:bold}
+  </style>
+
+  <!-- Quill (editor) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css">
+  <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+  <!-- Dexie (IndexedDB) -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <!-- fflate (gzip fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+  <!-- Google Identity Services & gapi client -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
+</head>
+<body>
+  <header>
+    <h1>NoteFlix — MVP v5.4 (Offline-first)</h1>
+    <div class="row">
+      <button id="signinBtn">Google'a Bağlan</button>
+      <span id="who" class="pill">Bağlı değil</span>
+      <span id="quota" class="pill">Kullanım: —</span>
+      <span id="env" class="pill">OPFS: —</span>
+      <span id="net" class="pill">Net: —</span>
+    </div>
+    <div class="row">
+      <button id="syncBtn" class="primary">Senkronize Et</button>
+      <button id="resetKeyringBtn">Keyring Sıfırla</button>
+      <span id="syncState" class="pill">Sync: beklemede</span>
+    </div>
+  </header>
+
+  <main class="pane">
+    <section class="card">
+      <div class="list-filter">
+        <input id="filter" type="text" placeholder="Listede ara... (başlık)">
+        <span class="muted">Toplam: <b id="count">0</b></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Başlık</th>
+            <th>Son Değişiklik</th>
+            <th style="width:110px">İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="notesTable"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">Durum</h3>
+      <div id="status"></div>
+    </section>
+  </main>
+
+  <!-- Not Modal -->
+  <div id="noteModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <input id="title" type="text" placeholder="Başlık yaz..." class="title-input">
+      </div>
+      <div class="modal-body">
+        <div id="toolbar">
+          <span class="ql-formats">
+            <select class="ql-header">
+              <option value="1">Başlık 1</option>
+              <option value="2">Başlık 2</option>
+              <option value="3">Başlık 3</option>
+              <option value="4">Başlık 4</option>
+              <option value="5">Başlık 5</option>
+              <option value="6">Başlık 6</option>
+              <option selected>Normal</option>
+            </select>
+            <select class="ql-font">
+              <option selected>Sans Serif</option>
+              <option value="serif">Serif</option>
+              <option value="monospace">Monospace</option>
+            </select>
+            <select class="ql-size">
+              <option value="small">Küçük</option>
+              <option selected>Normal</option>
+              <option value="large">Büyük</option>
+              <option value="huge">Çok Büyük</option>
+            </select>
+          </span>
+          
+          <span class="ql-formats">
+            <button class="ql-bold" title="Kalın"></button>
+            <button class="ql-italic" title="İtalik"></button>
+            <button class="ql-underline" title="Altı Çizili"></button>
+            <button class="ql-strike" title="Üstü Çizili"></button>
+            <button class="ql-script" value="sub" title="Alt Simge"></button>
+            <button class="ql-script" value="super" title="Üst Simge"></button>
+          </span>
+          
+          <span class="ql-formats">
+            <select class="ql-color">
+              <option selected></option>
+              <option value="#e60000"></option>
+              <option value="#ff9900"></option>
+              <option value="#ffff00"></option>
+              <option value="#008a00"></option>
+              <option value="#0066cc"></option>
+              <option value="#9933cc"></option>
+              <option value="#ffffff"></option>
+              <option value="#facccc"></option>
+              <option value="#ffebcc"></option>
+              <option value="#ffffcc"></option>
+              <option value="#cce8cc"></option>
+              <option value="#cce0f5"></option>
+              <option value="#ebd6ff"></option>
+              <option value="#bbbbbb"></option>
+              <option value="#f06666"></option>
+              <option value="#ffc266"></option>
+              <option value="#ffff66"></option>
+              <option value="#66b966"></option>
+              <option value="#66a3e0"></option>
+              <option value="#c285ff"></option>
+              <option value="#888888"></option>
+              <option value="#a10000"></option>
+              <option value="#b26b00"></option>
+              <option value="#b2b200"></option>
+              <option value="#006100"></option>
+              <option value="#0047b2"></option>
+              <option value="#6b24b2"></option>
+              <option value="#444444"></option>
+              <option value="#5c0000"></option>
+              <option value="#663d00"></option>
+              <option value="#666600"></option>
+              <option value="#003700"></option>
+              <option value="#002966"></option>
+              <option value="#3d1466"></option>
+            </select>
+            <select class="ql-background">
+              <option selected></option>
+              <option value="#e60000"></option>
+              <option value="#ff9900"></option>
+              <option value="#ffff00"></option>
+              <option value="#008a00"></option>
+              <option value="#0066cc"></option>
+              <option value="#9933cc"></option>
+              <option value="#ffffff"></option>
+              <option value="#facccc"></option>
+              <option value="#ffebcc"></option>
+              <option value="#ffffcc"></option>
+              <option value="#cce8cc"></option>
+              <option value="#cce0f5"></option>
+              <option value="#ebd6ff"></option>
+              <option value="#bbbbbb"></option>
+              <option value="#f06666"></option>
+              <option value="#ffc266"></option>
+              <option value="#ffff66"></option>
+              <option value="#66b966"></option>
+              <option value="#66a3e0"></option>
+              <option value="#c285ff"></option>
+              <option value="#888888"></option>
+              <option value="#a10000"></option>
+              <option value="#b26b00"></option>
+              <option value="#b2b200"></option>
+              <option value="#006100"></option>
+              <option value="#0047b2"></option>
+              <option value="#6b24b2"></option>
+              <option value="#444444"></option>
+              <option value="#5c0000"></option>
+              <option value="#663d00"></option>
+              <option value="#666600"></option>
+              <option value="#003700"></option>
+              <option value="#002966"></option>
+              <option value="#3d1466"></option>
+            </select>
+          </span>
+          
+          <span class="ql-formats">
+            <button class="ql-list" value="ordered" title="Numaralı Liste"></button>
+            <button class="ql-list" value="bullet" title="Madde İşareti"></button>
+            <button class="ql-indent" value="-1" title="Girintiyi Azalt"></button>
+            <button class="ql-indent" value="+1" title="Girintiyi Artır"></button>
+          </span>
+          
+          <span class="ql-formats">
+            <button class="ql-direction" value="rtl" title="Sağdan Sola"></button>
+            <select class="ql-align">
+              <option selected></option>
+              <option value="center">Ortala</option>
+              <option value="right">Sağa Hizala</option>
+              <option value="justify">İki Yana Hizala</option>
+            </select>
+          </span>
+          
+          <span class="ql-formats">
+            <button class="ql-link" title="Bağlantı"></button>
+            <button class="ql-image" title="Resim"></button>
+            <button class="ql-video" title="Video"></button>
+            <button class="ql-formula" title="Formül"></button>
+            <button class="ql-code-block" title="Kod Bloğu"></button>
+            <button class="ql-blockquote" title="Alıntı"></button>
+          </span>
+          
+          <span class="ql-formats">
+            <button class="ql-clean" title="Temizle"></button>
+          </span>
+        </div>
+        <div id="editor"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveBtn" class="primary">Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Action Button -->
+  <button id="fab" class="fab" onclick="openNoteModal()">
+    <i>+</i>
+  </button>
+
+<script type="module">
+/******************** helpers ********************/
+const $  = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const log = (m, cls='muted') => { const el=$('#status'); const d=document.createElement('div'); d.textContent=m; d.className=cls; el.appendChild(d); el.scrollTop=el.scrollHeight; console.log(m); };
+const fmtDate = (iso) => new Date(iso).toLocaleString();
+const genId = () => 'n_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const isOnline = () => navigator.onLine;
+
+/******************** base64url ********************/
+const b64u = {
+  e(a){const bytes=a instanceof ArrayBuffer?new Uint8Array(a):a;let bin='',chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)bin+=String.fromCharCode(...bytes.subarray(i,i+chunk));return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');},
+  d(s){s=s.replace(/-/g,'+').replace(/_/g,'/');const pad=s.length%4?4-(s.length%4):0;const bin=atob(s+'='.repeat(pad));const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out.buffer;}
+};
+const randomB64u = (n=16)=>b64u.e(crypto.getRandomValues(new Uint8Array(n)));
+
+/******************** Compression (gzip) ********************/
+async function gzip(ab){
+  if ('CompressionStream' in self) return await new Response(new Blob([ab]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  if (self.fflate?.gzipSync) return self.fflate.gzipSync(new Uint8Array(ab)).buffer;
+  return ab;
+}
+async function gunzip(ab){
+  if ('DecompressionStream' in self) return await new Response(new Blob([ab]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  if (self.fflate?.decompressSync) return self.fflate.decompressSync(new Uint8Array(ab)).buffer;
+  return ab;
+}
+
+/******************** WebCrypto (PBKDF2/AES) ********************/
+async function deriveMK(password, saltB64u, iter=310000){
+  const enc=new TextEncoder();
+  const keyMat=await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name:'PBKDF2', salt:b64u.d(saltB64u), iterations:iter, hash:'SHA-256' }, keyMat, { name:'AES-KW', length:256 }, false, ['wrapKey','unwrapKey']);
+}
+async function newDEK(){ const raw=crypto.getRandomValues(new Uint8Array(32)); return crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']); }
+async function wrapDEK(mk, dek){ const wrapped=await crypto.subtle.wrapKey('raw', dek, mk, 'AES-KW'); return b64u.e(wrapped); }
+async function unwrapDEK(mk, wrappedB64u){ return crypto.subtle.unwrapKey('raw', b64u.d(wrappedB64u), mk, 'AES-KW', 'AES-GCM', true, ['encrypt','decrypt']); }
+async function encryptJSON(dek, obj){
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  const gz = await gzip(raw);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, dek, gz);
+  return { iv: b64u.e(iv), ciphertext: b64u.e(ct) };
+}
+async function decryptJSON(dek, ivB64u, ctB64u){
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: b64u.d(ivB64u) }, dek, b64u.d(ctB64u));
+  const raw = await gunzip(pt);
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+
+/******************** OPFS (with Dexie fallback) ********************/
+const hasOPFS = !!(navigator.storage && navigator.storage.getDirectory);
+async function opfsRoot(){ return await navigator.storage.getDirectory(); }
+async function opfsWrite(path, bytes){
+  if (hasOPFS){
+    const root=await opfsRoot(); const parts=path.replace(/^\//,'').split('/'); const fname=parts.pop();
+    let dir=root; for(const p of parts){ dir=await dir.getDirectoryHandle(p, {create:true}); }
+    const fh=await dir.getFileHandle(fname, {create:true}); const ws=await fh.createWritable();
+    await ws.write(bytes); await ws.close();
+  } else {
+    await blobDB.blobs.put({ path, bytes });
+  }
+}
+async function opfsRead(path){
+  if (hasOPFS){
+    const root=await opfsRoot(); const parts=path.replace(/^\//,'').split('/'); const fname=parts.pop();
+    let dir=root; for(const p of parts){ dir=await dir.getDirectoryHandle(p); }
+    const fh=await dir.getFileHandle(fname); const file=await fh.getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  } else {
+    const rec = await blobDB.blobs.get(path); if (!rec) throw new Error('blob not found (fallback)'); return new Uint8Array(rec.bytes);
+  }
+}
+async function opfsDelete(path){
+  if (hasOPFS){
+    const root=await opfsRoot(); const parts=path.replace(/^\//,'').split('/'); const fname=parts.pop();
+    let dir=root; for(const p of parts){ dir=await dir.getDirectoryHandle(p); }
+    await dir.removeEntry(fname);
+  } else {
+    await blobDB.blobs.delete(path);
+  }
+}
+
+/******************** Dexie: cache index + blobs fallback ********************/
+const cacheDB = new Dexie('noteflix_cache');
+cacheDB.version(1).stores({ items:'key, lastAccess, type, pinned' }); // {key, type, size, lastAccess, pinned, path}
+const blobDB = new Dexie('noteflix_blobs');
+blobDB.version(1).stores({ blobs:'path' });
+async function cachePut(item){ return cacheDB.items.put(item); }
+async function cacheGet(key){ return cacheDB.items.get(key); }
+async function cacheDelete(key){ return cacheDB.items.delete(key); }
+async function cacheTouch(key){ const it=await cacheGet(key); if(it){ it.lastAccess=Date.now(); await cachePut(it);} }
+async function cacheSum(){ let sum=0; await cacheDB.items.each(i=>sum+=(i.size||0)); return sum; }
+async function cacheVictims(limit=500){ return cacheDB.items.where('pinned').equals(false).sortBy('lastAccess').then(a=>a.slice(0,limit)); }
+async function evictIfNeeded(additional=0, {maxGB=5, ratio=0.7}={}){
+  const est = await navigator.storage.estimate(); const TARGET = Math.min(est.quota * ratio, maxGB * 1024**3);
+  const cur = await cacheSum();
+  if (cur + additional <= TARGET) return;
+  const victims = await cacheVictims();
+  let freed=0;
+  for (const v of victims){
+    try{ await opfsDelete(v.path); }catch{}
+    await cacheDelete(v.key); freed += (v.size||0);
+    if (cur + additional - freed <= TARGET) break;
+  }
+  log('LRU evict: ' + (freed/1024/1024).toFixed(1) + ' MB serbest', 'warn');
+}
+
+/******************** Cache facade (notes) ********************/
+const Cache = {
+  noteKey: (id)=>'note:'+id,
+  notePath: (id)=>'/cache/notes/'+id+'.bin',
+  async cacheNote(dek, noteId, plain){
+    const raw = new TextEncoder().encode(JSON.stringify(plain));
+    const gz = await gzip(raw);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, dek, gz);
+    const bytes = new Uint8Array(12 + ct.byteLength);
+    bytes.set(iv, 0); bytes.set(new Uint8Array(ct), 12);
+    await evictIfNeeded(bytes.byteLength);
+    const path = this.notePath(noteId);
+    await opfsWrite(path, bytes);
+    await cachePut({ key:this.noteKey(noteId), type:'note', size:bytes.byteLength, lastAccess:Date.now(), pinned:false, path });
+    return true;
+  },
+  async getNote(dek, noteId, {fetchEnvelope}={}){
+    const key=this.noteKey(noteId);
+    const item = await cacheGet(key);
+    if (item){
+      const bytes = await opfsRead(item.path);
+      const iv = bytes.slice(0,12); const ct = bytes.slice(12);
+      const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, dek, ct);
+      const raw = await gunzip(pt);
+      const note = JSON.parse(new TextDecoder().decode(raw));
+      await cacheTouch(key);
+      return { source:'cache', note };
+    }
+    if (!fetchEnvelope) throw new Error('fetchEnvelope missing');
+    const env = await fetchEnvelope(noteId);
+    const plain = await decryptJSON(dek, env.enc.iv, env.ciphertext);
+    await this.cacheNote(dek, noteId, plain);
+    return { source:'remote', note: plain };
+  }
+};
+
+/******************** Dexie: app DB (notes meta + meta kv) ********************/
+const db = new Dexie('noteflix');
+// v1: temel
+db.version(1).stores({ notes:'id, updatedAt, title' });
+// v2: boolean index fix
+db.version(2).stores({ notes:'id, updatedAt, title, pendingInt, deletedInt' })
+  .upgrade(tx => tx.table('notes').toCollection().modify(n => {
+    n.pendingInt = n.pending ? 1 : 0;
+    n.deletedInt = n.deleted ? 1 : 0;
+  }));
+
+// Meta DB: offline keyring & misc
+const metaDB = new Dexie('noteflix_meta');
+metaDB.version(1).stores({ kv:'k' });
+const kvGet = async (k)=> (await metaDB.kv.get(k))?.v;
+const kvSet = async (k,v)=> metaDB.kv.put({k, v});
+const kvDel = async (k)=> metaDB.kv.delete(k);
+
+/******************** Google Auth + Drive helpers ********************/
+let accessToken = null, tokenClient = null, userEmail = 'kerem.korkmaz@gmail.com', appFolderId = null;
+const GOOGLE_CLIENT_ID = '888004155857-u09rcm3g84iqief0c2hs03kci3psr7ib.apps.googleusercontent.com';
+
+async function initGapi(){ await new Promise(res=>gapi.load('client',res)); await gapi.client.init({ discoveryDocs:['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] }); }
+async function signIn(){
+  await initGapi();
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    prompt: '',
+    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata openid email',
+    callback: async (resp)=>{
+      if (resp.error){ log('Auth hata: '+resp.error,'err'); return; }
+      accessToken = resp.access_token; gapi.client.setToken({ access_token: accessToken });
+      try{ const u=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+accessToken}}).then(r=>r.json()); userEmail=u.email; $('#who').textContent = userEmail ? ('Bağlı: '+userEmail) : 'Bağlı'; }catch{}
+      log('✅ Google Drive yetkisi verildi','ok');
+      await maybeSyncKeyring(); // online ise keyring'i Drive'a yaz
+      await ensureAppFolderId();
+      updateBadges();
+    }
+  });
+  tokenClient.requestAccessToken();
+}
+
+async function ensureVisibleFolder(name='NoteFlix'){
+  const q = "mimeType='application/vnd.google-apps.folder' and name='"+name+"' and trashed=false";
+  const r = await gapi.client.drive.files.list({ q, spaces:'drive', fields:'files(id)' });
+  if (r.result.files?.length) return r.result.files[0].id;
+  const c = await gapi.client.drive.files.create({ resource:{ name, mimeType:'application/vnd.google-apps.folder' }, fields:'id' });
+  return c.result.id;
+}
+
+/******** multipart helpers (for uploads via gapi.client.request) ********/
+function buildMultipart(metadata, jsonObj){
+  const boundary = 'noteflix-' + Math.random().toString(36).slice(2);
+  const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+  const mid  = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(jsonObj)}\r\n`;
+  const end  = `--${boundary}--`;
+  return { boundary, body: head + mid + end };
+}
+async function multipartCreate(metadata, jsonObj, fields='id,name,parents'){
+  const { boundary, body } = buildMultipart(metadata, jsonObj);
+  const req = await gapi.client.request({
+    path: '/upload/drive/v3/files',
+    method: 'POST',
+    params: { uploadType: 'multipart', fields },
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body
+  });
+  return req.result;
+}
+async function multipartUpdate(fileId, metadata, jsonObj, fields='id,name,parents', addParents='', removeParents=''){
+  const { boundary, body } = buildMultipart(metadata, jsonObj);
+  const params = { uploadType: 'multipart', fields };
+  if (addParents) params.addParents = addParents;
+  if (removeParents) params.removeParents = removeParents;
+  const req = await gapi.client.request({
+    path: '/upload/drive/v3/files/' + fileId,
+    method: 'PATCH',
+    params,
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body
+  });
+  return req.result;
+}
+
+/******** appDataFolder: index.json & keys.json (403 PATCH fix) ********/
+async function readAppFileByName(name){
+  try{
+    const r = await gapi.client.drive.files.list({ q:"name='"+name+"' and trashed=false", spaces:'appDataFolder', fields:'files(id,name)' });
+    if (!r.result.files?.length) return null;
+    const id=r.result.files[0].id; const file = await gapi.client.drive.files.get({ fileId:id, alt:'media' });
+    return { id, text: file.body };
+  }catch(e){ return null; }
+}
+async function upsertAppFile(name, text){
+  try{
+    const exist = await readAppFileByName(name);
+    // update'te parents göndermiyoruz (403 riskini kaldırır)
+    const metadata = { name, mimeType:'application/json' };
+    const jsonObj = JSON.parse(text);
+    if (exist){
+      return await multipartUpdate(exist.id, metadata, jsonObj, 'id');
+    } else {
+      const createMeta = { name, parents:['appDataFolder'], mimeType:'application/json' };
+      return await multipartCreate(createMeta, jsonObj, 'id');
+    }
+  }catch(e){
+    log('upsertAppFile hata: '+e.message,'err');
+    return null;
+  }
+}
+async function loadIndex(){
+  const r = await readAppFileByName('index.json');
+  if (!r) return { fileId:null, data:{ v:1, startPageToken:null, notes:{}, appFolderId:null } };
+  return { fileId:r.id, data: JSON.parse(r.text) };
+}
+async function saveIndex(obj){ await upsertAppFile('index.json', JSON.stringify(obj)); }
+async function ensureAppFolderId(){
+  if (!accessToken || !isOnline()) return null;
+  if (appFolderId) return appFolderId;
+  const idx = await loadIndex(); const index = idx.data;
+  if (index.appFolderId){ appFolderId = index.appFolderId; return appFolderId; }
+  appFolderId = await ensureVisibleFolder('NoteFlix');
+  index.appFolderId = appFolderId;
+  await saveIndex(index);
+  log('📁 NoteFlix klasörü hazır: ' + appFolderId, 'ok');
+  return appFolderId;
+}
+
+/******** NOTE JSON uploads (multipart) ********/
+async function driveCreateJson(folderId, name, appProps, jsonObj){
+  const metadata = { name, parents:[folderId], appProperties: appProps, mimeType:'application/json' };
+  return await multipartCreate(metadata, jsonObj, 'id,name,parents');
+}
+async function driveUpdateJson(fileId, folderId, name, appProps, jsonObj){
+  const meta = await gapi.client.drive.files.get({ fileId, fields:'id,parents' });
+  const curParents = meta.result.parents || [];
+  const addParents = curParents.includes(folderId) ? '' : folderId;
+  const removeParents = !curParents.length ? '' : curParents.filter(p=>p!==folderId).join(',');
+  const metadata = { name, appProperties: appProps, mimeType:'application/json' };
+  return await multipartUpdate(fileId, metadata, jsonObj, 'id,name,parents', addParents, removeParents);
+}
+async function upsertNoteFile(folderId, noteId, envelope){
+  const name = `${noteId}.json`;
+  const appProperties = { app:'noteflix', noteId, version:String(envelope.meta?.rev||0) };
+  const q = `'${folderId}' in parents and appProperties has { key='noteId' and value='${noteId}' } and trashed=false`;
+  const r = await gapi.client.drive.files.list({ q, spaces:'drive', fields:'files(id,name,parents)' });
+  if (r.result.files?.length){
+    return await driveUpdateJson(r.result.files[0].id, folderId, name, appProperties, envelope);
+  } else {
+    return await driveCreateJson(folderId, name, appProperties, envelope);
+  }
+}
+async function getNoteEnvelopeByName(folderId, noteId){
+  const q = `'${folderId}' in parents and appProperties has { key='noteId' and value='${noteId}' } and trashed=false`;
+  const r = await gapi.client.drive.files.list({ q, spaces:'drive', fields:'files(id,name,modifiedTime,parents)' });
+  if(!r.result.files?.length) return null;
+  const id=r.result.files[0].id; const media=await gapi.client.drive.files.get({fileId:id,alt:'media'}); return { id, envelope: JSON.parse(media.body), modifiedTime: r.result.files[0].modifiedTime };
+}
+
+/******************** OFFLINE-FIRST KEYRING ********************/
+async function maybeSyncKeyring(){
+  if (!accessToken || !isOnline()) return;
+  const local = await kvGet('keyring');
+  const remote = await readAppFileByName('keys.json');
+  if (remote && !local){
+    await kvSet('keyring', JSON.parse(remote.text));
+    await kvDel('keyringDirty');
+    log('🔑 Keyring uzak -> lokal kopyalandı');
+    return;
+  }
+  if (!remote && local){
+    await upsertAppFile('keys.json', JSON.stringify(local));
+    await kvDel('keyringDirty');
+    log('🔑 Keyring lokal -> uzak gönderildi');
+    return;
+  }
+}
+
+async function resetKeyring(){
+  await kvDel('keyring');
+  await kvDel('keyringDirty');
+  log('🗑️ Keyring sıfırlandı - yeni parola ile tekrar deneyin', 'warn');
+}
+async function ensureKeyring(password){
+  try {
+    let local = await kvGet('keyring');
+    
+    if (local){
+      try {
+        const mk = await deriveMK(password, local.kdf.salt, local.kdf.iter);
+        const dek = await unwrapDEK(mk, local.wrappedDEK);
+        return dek;
+      } catch (error) {
+        console.error('keyring unwrap hatası:', error);
+        await kvDel('keyring');
+        await kvDel('keyringDirty');
+        // Yeni keyring oluşturmak için aşağıdaki koda devam et
+      }
+    }
+    
+    if (accessToken && isOnline()){
+      const remote = await readAppFileByName('keys.json');
+      if (remote){
+        const obj = JSON.parse(remote.text);
+        await kvSet('keyring', obj);
+        const mk = await deriveMK(password, obj.kdf.salt, obj.kdf.iter);
+        const dek = await unwrapDEK(mk, obj.wrappedDEK);
+        return dek;
+      }
+    }
+    
+    // yoksa lokal oluştur
+    const salt = randomB64u(16);
+    const mk = await deriveMK(password, salt);
+    const dek = await newDEK();
+    const wrappedDEK = await wrapDEK(mk, dek);
+    const payload = { v:1, kdf:{name:'PBKDF2',hash:'SHA-256',iter:310000,salt}, wrap:{alg:'AES-KW-256'}, wrappedDEK, createdAt:new Date().toISOString() };
+    await kvSet('keyring', payload);
+    await kvSet('keyringDirty', 1);
+    log('🔐 Keyring lokal olarak oluşturuldu (offline)', 'ok');
+    return dek;
+  } catch (error) {
+    console.error('ensureKeyring hatası:', error);
+    throw error;
+  }
+}
+
+/******************** Editor ********************/
+let quill = null;
+
+function initQuill(){
+  if(quill) return;
+  quill = new Quill('#editor',{ theme:'snow', modules:{ toolbar:'#toolbar' } });
+}
+
+// Global fonksiyonlar (HTML onclick'ler için)
+window.openNoteModal = function(){
+  $('#noteModal').style.display = 'flex';
+  initQuill();
+  newNote();
+}
+
+window.closeNoteModal = function(){
+  $('#noteModal').style.display = 'none';
+}
+
+/******************** State & UI ********************/
+let currentNoteId = null;
+function updateBadges(){
+  $('#net').textContent = 'Net: ' + (isOnline() ? 'online' : 'offline');
+  (async()=>{
+    const est = await navigator.storage.estimate();
+    $('#quota').textContent = `Kullanım: ${(est.usage/1024/1024).toFixed(1)}MB / ${(est.quota/1024/1024).toFixed(1)}MB`;
+    $('#env').textContent = 'OPFS: ' + (hasOPFS ? 'evet' : 'hayır (fallback)');
+  })();
+}
+window.addEventListener('online', ()=>{ updateBadges(); log('💡 Çevrim içi — otomatik senkron başlıyor', 'ok'); pushPendingNotes(); });
+window.addEventListener('offline', ()=>{ updateBadges(); log('📴 Çevrim dışı — notlar yerelde birikecek', 'warn'); });
+
+async function refreshList(){
+  const q = ($('#filter').value||'').toLowerCase();
+  const rows = await db.notes.orderBy('updatedAt').reverse().toArray();
+  const tbody = $('#notesTable'); tbody.innerHTML='';
+  let count=0;
+  for (const n of rows){
+    if (q && !(n.title||'').toLowerCase().includes(q)) continue;
+    count++;
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${n.title || '(başlıksız)'} ${n.pendingInt===1?'<span class="pill warn">pending</span>':''}</td>
+      <td class="muted">${fmtDate(n.updatedAt||new Date().toISOString())}</td>
+      <td class="list-actions"><button data-id="${n.id}" class="loadBtn">Yükle</button></td>`;
+    tbody.appendChild(tr);
+  }
+  $('#count').textContent = String(count);
+  $$('#notesTable .loadBtn').forEach(btn=>btn.addEventListener('click', async (e)=>{
+    const id=e.currentTarget.getAttribute('data-id'); await loadNoteById(id);
+  }));
+}
+
+async function loadNoteById(id){
+  if(!userEmail){ alert('Önce Google\'a bağlanın'); return; }
+  const dek = await ensureKeyring(userEmail);
+  const fetchEnvelope = async (noteId)=>{
+    if (!accessToken || !isOnline()) throw new Error('offline');
+    const folder = await ensureAppFolderId(); if (!folder) throw new Error('folder yok');
+    const ref = await getNoteEnvelopeByName(folder, noteId);
+    if (!ref) throw new Error('Uzakta bulunamadı');
+    return ref.envelope;
+  };
+  try{
+    const { note } = await Cache.getNote(dek, id, { fetchEnvelope });
+    openNoteModal();
+    $('#title').value = note.title || '';
+    quill.setContents(note.content || {ops:[]});
+    currentNoteId = id;
+    log('⬇️ Yüklendi: ' + id, 'ok');
+  }catch(err){
+    if (String(err.message).includes('offline')){
+      log('Uzak erişim yok (offline). Sadece yerel cache okutuldu/okutulamadı.', 'warn');
+    } else {
+      log('Yükleme hatası: '+err.message, 'err');
+    }
+  }
+}
+
+async function newNote(){
+  currentNoteId = null;
+  if(quill) {
+    $('#title').value = '';
+    quill.setContents({ops:[]});
+  }
+}
+
+async function saveNote(){
+  try {
+    const title = $('#title').value.trim();
+    const delta = quill.getContents();
+    if (!userEmail){ alert('Önce Google\'a bağlanın'); return; }
+    
+    const dek = await ensureKeyring(userEmail);
+    const id = currentNoteId || genId();
+    const now = new Date().toISOString();
+    const plain = { id, title, updatedAt: now, contentType:'quill-delta', content: delta };
+
+    // Her zaman önce lokal kaydet
+    await Cache.cacheNote(dek, id, plain);
+    await db.notes.put({ id, title, updatedAt: now, pendingInt: 1, deletedInt: 0 });
+    currentNoteId = id;
+    log('💾 Yerelde kaydedildi (pending)', 'ok');
+    await refreshList();
+
+    // Hemen push denemesi
+    await pushPendingNotes();
+    
+    closeNoteModal();
+  } catch (error) {
+    console.error('saveNote hatası:', error);
+    log('❌ Kaydetme hatası: ' + error.message, 'err');
+  }
+}
+
+// Pending push motoru
+async function pushPendingNotes(){
+  if (!accessToken || !isOnline()) return;
+  if (!userEmail) return;
+  
+  const pendings = await db.notes.where('pendingInt').equals(1).toArray();
+  if (!pendings.length) return;
+  
+  await maybeSyncKeyring();
+  await ensureAppFolderId();
+  const dek = await ensureKeyring(userEmail);
+  
+  for (const n of pendings){
+    try{
+      const { note } = await Cache.getNote(dek, n.id, { fetchEnvelope: async()=>{ throw new Error('skip remote'); } });
+      const { iv, ciphertext } = await encryptJSON(dek, note);
+      const env = { v:1, kind:'note', meta:{ id:n.id, rev: Date.now(), modifiedAt: note.updatedAt, contentType:'quill-delta' }, enc:{ alg:'AES-256-GCM', iv }, ciphertext };
+      await upsertNoteFile(appFolderId, n.id, env);
+      await db.notes.update(n.id, { pendingInt: 0 });
+      log('☁️ Push edildi: ' + n.id, 'ok');
+    }catch(e){
+      log('push hata '+n.id+': '+e.message, 'err');
+    }
+  }
+}
+
+async function pushSync(){
+  if (!accessToken || !isOnline()){ log('push: offline/bağlı değil','warn'); return; }
+  if (!userEmail){ log('push: Google\'a bağlı değil','warn'); return; }
+  await maybeSyncKeyring();
+  await ensureAppFolderId();
+  const dek = await ensureKeyring(userEmail);
+  const pendings = await db.notes.where('pendingInt').equals(1).toArray();
+  let uploaded=0;
+  for (const n of pendings){
+    try{
+      const { note } = await Cache.getNote(dek, n.id, { fetchEnvelope: async()=>{ throw new Error('skip remote'); } });
+      const { iv, ciphertext } = await encryptJSON(dek, note);
+      const env = { v:1, kind:'note', meta:{ id:n.id, rev: Date.now(), modifiedAt: note.updatedAt, contentType:'quill-delta' }, enc:{ alg:'AES-256-GCM', iv }, ciphertext };
+      await upsertNoteFile(appFolderId, n.id, env);
+      await db.notes.update(n.id, { pendingInt: 0 });
+      uploaded++;
+    }catch(e){
+      log('push err '+n.id+': '+e.message,'err');
+    }
+  }
+  log('push tamam: ' + uploaded + ' not', 'ok');
+}
+
+async function pullSync(){
+  if (!accessToken || !isOnline()){ log('pull: offline/bağlı değil','warn'); return; }
+  if (!userEmail){ log('pull: Google\'a bağlı değil','warn'); return; }
+  await ensureAppFolderId();
+  const idx = await loadIndex();
+  const index = idx.data;
+  if (!index.startPageToken){
+    const t = await gapi.client.drive.changes.getStartPageToken({ spaces:'drive' });
+    index.startPageToken = t.result.startPageToken;
+    await saveIndex(index);
+  }
+
+  const dek = await ensureKeyring(userEmail);
+
+  let pageToken = index.startPageToken;
+  let newStart = index.startPageToken;
+  let applied = 0;
+
+  do {
+    const res = await gapi.client.drive.changes.list({
+      pageToken, spaces:'drive',
+      fields:'nextPageToken,newStartPageToken,changes(fileId,removed,file(name,appProperties,modifiedTime,trashed,parents))'
+    });
+    const changes = res.result.changes || [];
+    for (const ch of changes){
+      const f = ch.file;
+      if (!f) continue;
+
+      // SADECE NoteFlix klasöründeki dosyalar
+      if (appFolderId && !(f.parents || []).includes(appFolderId)) {
+        // İsteğe bağlı auto-heal:
+        // try { await gapi.client.drive.files.update({ fileId: ch.fileId, addParents: appFolderId, removeParents: (f.parents||[]).join(','), fields:'id,parents' }); }
+        // catch(e){ log('Taşıma hatası: '+e.message,'err'); }
+        continue;
+      }
+
+      const isNote = f.appProperties?.app==='noteflix' && f.appProperties?.noteId && !(f.name?.includes('.conflict.'));
+      if (!isNote) continue;
+
+      const noteId = f.appProperties.noteId;
+
+      if (ch.removed || f.trashed){
+        await db.notes.delete(noteId);
+        const item = await cacheGet(Cache.noteKey(noteId)); if (item){ try{ await opfsDelete(item.path);}catch{} await cacheDelete(item.key); }
+        applied++; continue;
+      }
+
+      try{
+        const media = await gapi.client.drive.files.get({ fileId: ch.fileId, alt:'media' });
+        const env = JSON.parse(media.body);
+        const plain = await decryptJSON(dek, env.enc.iv, env.ciphertext);
+        await Cache.cacheNote(dek, noteId, plain);
+        await db.notes.put({ id: noteId, title: plain.title, updatedAt: plain.updatedAt, pendingInt:0, deletedInt:0 });
+        applied++;
+      }catch(e){ log('pull değişiklik hata: '+e.message,'err'); }
+    }
+
+    pageToken = res.result.nextPageToken;
+    if (res.result.newStartPageToken) newStart = res.result.newStartPageToken;
+  } while (pageToken);
+
+  if (newStart !== index.startPageToken){
+    index.startPageToken = newStart; await saveIndex(index);
+  }
+  log('pull tamam: ' + applied + ' değişiklik', 'ok');
+}
+
+/*************** COLD START: Drive → Lokal tohum ****************/
+async function coldStartSeed(){
+  if (!accessToken || !isOnline()) { log('coldStart: offline/bağlı değil','warn'); return; }
+  if (!userEmail){ log('coldStart: Google\'a bağlı değil','warn'); return; }
+  await ensureAppFolderId();
+
+  const dek = await ensureKeyring(userEmail);
+
+  let pageToken = null, imported = 0;
+  do {
+    const r = await gapi.client.drive.files.list({
+      q: `'${appFolderId}' in parents and appProperties has { key='app' and value='noteflix' } and trashed=false`,
+      spaces: 'drive',
+      fields: 'nextPageToken, files(id,name,modifiedTime,appProperties)',
+      pageSize: 1000,
+      pageToken
+    });
+    for (const f of (r.result.files || [])){
+      const noteId = f.appProperties?.noteId; if (!noteId) continue;
+      try{
+        const media = await gapi.client.drive.files.get({ fileId: f.id, alt:'media' });
+        const env = JSON.parse(media.body);
+        const plain = await decryptJSON(dek, env.enc.iv, env.ciphertext);
+        await Cache.cacheNote(dek, noteId, plain);
+        await db.notes.put({ id: noteId, title: plain.title, updatedAt: plain.updatedAt, pendingInt:0, deletedInt:0 });
+        imported++;
+        log('✅ İçe aktarıldı: ' + (plain.title || noteId), 'ok');
+      }catch(e){
+        log('❌ coldStart decrypt hata '+(f.name||f.id)+': '+e.message,'err');
+        log('💡 Bu not farklı parolayla şifrelenmiş olabilir', 'warn');
+      }
+    }
+    pageToken = r.result.nextPageToken;
+  } while (pageToken);
+
+  log('coldStart tamam: ' + imported + ' not içe aktarıldı','ok');
+}
+
+/******************** Sync orchestrator ********************/
+async function syncAll(){
+  $('#syncState').textContent = 'Sync: çalışıyor...';
+  try{
+    // Lokal boşsa önce NoteFlix klasörünü tamamen tara
+    if (await db.notes.count() === 0) {
+      await coldStartSeed();
+    }
+    await pushSync();
+    await pullSync();
+    await refreshList();
+    $('#syncState').textContent = 'Sync: tamam';
+  }catch(e){
+    $('#syncState').textContent = 'Sync: hata';
+    log('sync hata: '+e.message,'err');
+  }
+}
+
+/******************** Events ********************/
+$('#signinBtn').addEventListener('click', signIn);
+$('#syncBtn').addEventListener('click', syncAll);
+$('#resetKeyringBtn').addEventListener('click', resetKeyring);
+$('#saveBtn').addEventListener('click', saveNote);
+$('#filter').addEventListener('input', refreshList);
+
+// Modal dışına tıklayınca kapat
+$('#noteModal').addEventListener('click', (e) => {
+  if (e.target === $('#noteModal')) {
+    closeNoteModal();
+  }
+});
+
+/******************** Boot ********************/
+(async () => {
+  await navigator.storage.persist().catch(()=>{});
+  updateBadges();
+  const qu = !!(navigator.storage && navigator.storage.getDirectory);
+  log('OPFS ' + (qu ? 'destekleniyor' : 'desteklenmiyor, IndexedDB fallback'), qu ? 'ok':'warn');
+  await refreshList();
+  log('Hazır. Offline iken kaydettiğiniz notlar yerelde birikir; internet gelince otomatik senkron yapılır.', 'ok');
+})();
+</script>
+</body>
+</html>
