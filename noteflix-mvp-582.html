@@ -310,6 +310,7 @@
 			}
 
 			async function driveSyncJson(folderId, noteId, envelope, googleFiles = null) {
+				log("driveSyncJson");
 				const name = `${noteId}.json`;
 				const appProperties = {
 					app: 'noteflix',
@@ -378,11 +379,12 @@
 				}
 				throw e; // Hata yukarıya fırlatılsın
 			}
-
+		}
 			// ==========================
 			// Save / Load
 			// ==========================
 			async function saveNote() {
+				log("saveNote");
 				const title = $('#title').value;
 				const delta = quill.getContents();
 				const id = currentNoteId || ('n_' + Date.now());
@@ -416,8 +418,8 @@
 				if (navigator.onLine && accessToken && appFolderId) {
 					try {
 						await ensureFolder();
-						log("💾 Yerelde kaydedildi (pending)");
-						log(`🔄 ${id} Google Drive'a senkronize ediliyor...`);
+						log("💾 Yerelde kaydedildi (pending1)");
+						log("🔄 ${id} Google Drive'a senkronize ediliyor...");
 						const result = await driveSyncJson(appFolderId, id, env);
 						await db.notes.update(id, {
 							googleFileId: result.result.id
@@ -431,7 +433,7 @@
 						}
 					}
 				} else {
-					log("💾 Yerelde kaydedildi (pending)");
+					log("💾 Yerelde kaydedildi (pending2)");
 					if (!navigator.onLine) {
 						log("⚠️ İnternet bağlantısı yok, sadece yerel kayıt yapıldı");
 					} else if (!accessToken) {
@@ -528,16 +530,16 @@
 								if (existingUpdated > driveUpdated) {
 									log(`⚠️ ${id} lokaldeki daha güncel, Drive'dan indirilmedi`);
 									// Lokaldeki daha güncel, sadece googleFileId'yi kaydet
-                  await db.notes.put({
-                    id,
-                    title: existingNote.title,
-                    createdAt: existingNote.createdAt,  // Mevcut createdAt'i koru
-                    updatedAt: existingNote.updatedAt,
-                    pendingInt: 1, // Lokaldeki daha güncel, senkronize et
-                    cachedInt: 1,
-                    accessedAt: Date.now(),
-                    googleFileId: f.id
-                  });
+									  await db.notes.put({
+										id,
+										title: existingNote.title,
+										createdAt: existingNote.createdAt,  // Mevcut createdAt'i koru
+										updatedAt: existingNote.updatedAt,
+										pendingInt: 1, // Lokaldeki daha güncel, senkronize et
+										cachedInt: 1,
+										accessedAt: Date.now(),
+										googleFileId: f.id
+									  });
 									continue; // Sonraki dosyaya geç
 								}
 							} catch (e) {
@@ -549,17 +551,22 @@
 							fileId: f.id,
 							alt: 'media'
 						});
+						
+						const envTemp = JSON.parse(file.body);
+						const keyTemp = masterKey || await deriveKey(userEmail || "demo", "salt");
+						const noteTemp = await decryptJSON(keyTemp, envTemp.iv, envTemp.cipher);
+						
 						await opfsWrite(id + ".json", file.body);
-            await db.notes.put({
-              id,
-              title: id,
-              createdAt: f.modifiedTime,  // Drive'dan indirilen dosya için creation time
-              updatedAt: f.modifiedTime,
-              pendingInt: 0,
-              cachedInt: 1,
-              accessedAt: Date.now(),
-              googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
-            });
+						await db.notes.put({
+						  id,
+						  title: noteTemp.title,
+						  createdAt: f.modifiedTime,  // Drive'dan indirilen dosya için creation time
+						  updatedAt: f.modifiedTime,
+						  pendingInt: 0,
+						  cachedInt: 1,
+						  accessedAt: Date.now(),
+						  googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
+						});
 						log(`⬇️ ${id} Drive'dan indirildi`);
 					} else {
 						const localUpdated = new Date(local.updatedAt);
@@ -723,6 +730,7 @@
 								$('#who').textContent = 'Bağlı';
 								log("✅ Google Drive'a başarıyla bağlandı");
 							}
+							ensureFolder();
 						}
 					});
 					tokenClient.requestAccessToken();
