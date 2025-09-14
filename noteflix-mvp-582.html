@@ -552,7 +552,7 @@
 				currentNoteId = id;
 				//refresh note list
 				await refreshList();
-				log("💾 Saved to local db (pending)");
+				log(`🔄 ${id} Google Drive is synchronizing...`);
 				
 				// İnternet bağlantısı varsa ve google drive'a bağlandıysa
 				if (navigator.onLine && accessToken) {
@@ -621,7 +621,8 @@
 						title: noteContent.title + ' (Kopya)',
 						createdAt: now,
 						updatedAt: now,
-						content: noteContent.content
+						content: noteContent.content,
+						contentText: noteContent.contentText
 					};
 					
 					// 6. Yeni notu şifrele ve OPFS'e kaydet
@@ -1018,7 +1019,7 @@
 				console.log('backgroundPreload.metas:' + metas);
 				for (const n of metas) {
 					try {
-						const q = `'${appFolderId}' in parents and name='${n.id}' and trashed=false`;
+						const q = `'${appFolderId}' in parents and name='${n.id}.json' and trashed=false`;
 						// gapi.client.drive.files.list yerine fetch API kullan
 						const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id)`, {
 							method: "GET",
