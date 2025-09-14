@@ -212,7 +212,7 @@
 			
 			const db = new Dexie('noteflix');
 			db.version(1).stores({
-				notes: 'id,title,plainText,pendingInt,cachedInt,createdAt,updatedAt,accessedAt,googleFileId,isDeleted'
+				notes: 'id,title,plainText,pendingInt,cachedInt,createdAt,updatedAt,accessedAt,googleFileId,isDeleted,revision'
 			});
 			
 			const GOOGLE_CLIENT_ID = "888004155857-u09rcm3g84iqief0c2hs03kci3psr7ib.apps.googleusercontent.com";
@@ -397,7 +397,7 @@
 				};
 			}
 
-			async function driveSyncJson(folderId, entityId, updatedAt, envelope, googleFiles = null) {
+			async function driveSyncJson(folderId, entityId, updatedAt, revision, envelope, googleFiles = null) {
 				log("driveSyncJson");
 				const name = `${entityId}.json`;
 				const appProperties = {
@@ -519,6 +519,7 @@
 				const deltaText = quill ? quill.getText().trim() : '';				
 				const existingNote = currentNoteId ? await db.notes.get(currentNoteId) : null;				
 				const now = new Date().toISOString();
+				const revision = (existingNote?.revision || 0) + 1;
 				
 				//write OPFS
 				const plain = {
@@ -546,7 +547,8 @@
 				  updatedAt: now,
 				  accessedAt: Date.now(),
 				  googleFileId: existingNote ? existingNote.googleFileId : null ,
-				  isDeleted: 0
+				  isDeleted: 0,
+				  revision: revision
 				});
 				
 				currentNoteId = id;
@@ -560,7 +562,7 @@
 						await ensureFolder();
 						
 						log("🔄 ${id} Google Drive is syncronizing...");
-						const result = await driveSyncJson(appFolderId, id, now, env);
+						const result = await driveSyncJson(appFolderId, id, now, revision, env);
 						
 						await db.notes.update(id, {
 							pendingInt: 0,
@@ -614,6 +616,7 @@
 					// 4. Yeni ID oluştur
 					const newId = 'n_' + Date.now();
 					const now = new Date().toISOString();
+					const revision = 1;
 					
 					// 5. Kopyalanan not için yeni içerik oluştur
 					const copiedContent = {
@@ -640,7 +643,8 @@
 						updatedAt: now,
 						accessedAt: Date.now(),
 						googleFileId: null, // Yeni not, henüz Google Drive'da yok
-						isDeleted: 0
+						isDeleted: 0,
+						revision: 1
 					});
 					
 					// 8. Liste güncelle
@@ -652,7 +656,7 @@
 						try {
 							await ensureFolder();
 							log(`🔄 ${newId} Google Drive'a senkronize ediliyor...`);
-							const result = await driveSyncJson(appFolderId, newId, now, newEnv);
+							const result = await driveSyncJson(appFolderId, newId, now, revision, newEnv);
 							await db.notes.update(newId, {
 								pendingInt: 0,
 								googleFileId: result.result.id
@@ -986,10 +990,10 @@
 						} else {
 							// İlk kez Drive'a yükleniyor
 							log(`📤 ${n.id} ilk kez Drive'a yükleniyor...`);
-							result = await driveSyncJson(appFolderId, n.id, n.updatedAt, envelope, driveFiles);
+							result = await driveSyncJson(appFolderId, n.id, n.updatedAt, n.revision, envelope, driveFiles);
 						}
 						*/
-						result = await driveSyncJson(appFolderId, n.id, n.updatedAt, envelope, driveFiles);
+						result = await driveSyncJson(appFolderId, n.id, n.updatedAt, n.revision, envelope, driveFiles);
 						
 						log(`✅ ${n.id} başarıyla işlendi: ${result.result.name} (ID: ${result.result.id})`);
 						await db.notes.update(n.id, {
