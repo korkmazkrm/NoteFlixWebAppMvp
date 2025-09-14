@@ -103,7 +103,7 @@
 		<header>
 			<h2>NoteFlix v5.8.2 – Master</h2>
 			<div>
-				<button id="signinBtn">Google'a Bağlan</button>
+				<button id="googleConnectBtn">Google'a Bağlan</button>
 				<span id="who" class="pill">Bağlı değil</span>
 			</div>
 			<div>
@@ -148,16 +148,73 @@
 				$('#status').scrollTop = $('#status').scrollHeight;
 				console[t](m);
 			};
+			
+			// Resim sıkıştırma fonksiyonu
+			function compressImage(base64, maxWidth = 800, quality = 0.8) {
+				return new Promise((resolve) => {
+					const img = new Image();
+					img.onload = () => {
+						const canvas = document.createElement('canvas');
+						const ctx = canvas.getContext('2d');
+						
+						// Boyutları hesapla
+						const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+						canvas.width = img.width * ratio;
+						canvas.height = img.height * ratio;
+						
+						// Resmi çiz
+						ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+						
+						// Sıkıştır
+						const compressed = canvas.toDataURL('image/jpeg', quality);
+						resolve(compressed);
+					};
+					img.src = base64;
+				});
+			}
+
 			const quill = new Quill('#editor', {
 				theme: 'snow',
 				modules: {
 					toolbar: '#toolbar'
 				}
 			});
+
+			// Resim yapıştırma sınırlaması
+			quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node, delta) => {
+				if (node.tagName === 'IMG') {
+					const src = node.getAttribute('src');
+					if (src && src.startsWith('data:image')) {
+						// Base64 resim boyutunu kontrol et
+						const sizeInBytes = (src.length * 3) / 4;
+						if (sizeInBytes > 1024 * 1024) { // 1MB sınırı
+							log('🖼️ Resim çok büyük, sıkıştırılıyor...');
+							// Resmi sıkıştır (asenkron işlem için setTimeout kullan)
+							setTimeout(async () => {
+								try {
+									const compressed = await compressImage(src);
+									// Mevcut delta'yı temizle ve yeni resmi ekle
+									const currentLength = quill.getLength();
+									quill.deleteText(0, currentLength);
+									quill.insertEmbed(0, 'image', compressed);
+									log('✅ Resim sıkıştırıldı ve eklendi');
+								} catch (error) {
+									log(`❌ Resim sıkıştırma hatası: ${error.message}`, "error");
+								}
+							}, 0);
+							// Boş delta döndür, asıl işlem setTimeout'ta yapılacak
+							return { ops: [] };
+						}
+					}
+				}
+				return delta;
+			});
+			
 			const db = new Dexie('noteflix');
-      db.version(1).stores({
-        notes: 'id,createdAt,updatedAt,title,pendingInt,cachedInt,accessedAt,googleFileId'
-      });
+			db.version(1).stores({
+				notes: 'id,title,plainText,pendingInt,cachedInt,createdAt,updatedAt,accessedAt,googleFileId,isDeleted'
+			});
+			
 			const GOOGLE_CLIENT_ID = "888004155857-u09rcm3g84iqief0c2hs03kci3psr7ib.apps.googleusercontent.com";
 			let accessToken = null,
 				tokenClient = null,
@@ -165,6 +222,26 @@
 				currentNoteId = null,
 				masterKey = null,
 				userEmail = null;
+
+			// ==========================
+			// Google Token
+			// ==========================
+			function saveGoogleAuthState(token, email) {
+				localStorage.setItem('noteflix_google_token', token);
+				localStorage.setItem('noteflix_google_email', email);
+			}
+
+			function loadGoogleAuthState() {
+				const token = localStorage.getItem('noteflix_google_token');
+				const email = localStorage.getItem('noteflix_google_email');
+				return { token, email };
+			}
+
+			function clearGoogleAuthState() {
+				localStorage.removeItem('noteflix_google_token');
+				localStorage.removeItem('noteflix_google_email');
+			}
+			
 			// ==========================
 			// OPFS
 			// ==========================
@@ -205,7 +282,7 @@
 			// ==========================
 			// Crypto + Compression
 			// ==========================
-			async function generateKey(email) {
+			async function generateHashedKey(email) {
 				// 1. Email string'ini UTF-8 byte array'e çevir
 				const encoder = new TextEncoder();
 				const data = encoder.encode(email);
@@ -218,7 +295,7 @@
 			}
 
 			async function deriveKey(email, salt) {
-				const keyString = await generateKey(email + salt);
+				const keyString = await generateHashedKey(email + salt);
 				// Hex string'i byte array'e çevir
 				const keyBytes = new Uint8Array(keyString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 				return await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
@@ -252,7 +329,7 @@
 			// Google Drive
 			// ==========================
 			async function driveCreateJson(folderId, name, appProperties, envelope) {
-				log(`📄 driveCreateJson çağrılıyor - name: ${name}, folderId: ${folderId}`);
+				log(`📄 driveCreateJson folderId: ${folderId}, name: ${name}`);
 				log(`📄 appProperties: ${JSON.stringify(appProperties)}`);
 				const content = JSON.stringify(envelope);
 				const blob = new Blob([content], {
@@ -276,13 +353,19 @@
 					},
 					body: form
 				});
+				if (!res.ok) {
+					const errorData = await res.json();
+					log(`❌ driveCreateJson error: ${errorData.error?.message || res.statusText}`, "error");
+					throw new Error(`File creation error: ${errorData.error?.message || res.statusText}`);
+				}
 				return {
 					result: await res.json()
 				};
 			}
 
 			async function driveUpdateJson(fileId, folderId, name, appProperties, envelope) {
-				log(`📄 driveUpdateJson çağrılıyor - fileId: ${fileId}, name: ${name}`);
+				log(`📄 driveUpdateJson fileId: ${fileId}, folderId:${folderId}, name: ${name}`);
+				log(`📄 appProperties: ${JSON.stringify(appProperties)}`);
 				const content = JSON.stringify(envelope);
 				const blob = new Blob([content], {
 					type: "application/json"
@@ -304,154 +387,376 @@
 					},
 					body: form
 				});
+				if (!res.ok) {
+					const errorData = await res.json();
+					log(`❌ driveUpdateJson error: ${errorData.error?.message || res.statusText}`, "error");
+					throw new Error(`File update error: ${errorData.error?.message || res.statusText}`);
+				}
 				return {
 					result: await res.json()
 				};
 			}
 
-			async function driveSyncJson(folderId, noteId, envelope, googleFiles = null) {
+			async function driveSyncJson(folderId, entityId, updatedAt, envelope, googleFiles = null) {
 				log("driveSyncJson");
-				const name = `${noteId}.json`;
+				const name = `${entityId}.json`;
 				const appProperties = {
 					app: 'noteflix',
-					noteId,
-					version: String(envelope.meta?.rev || 0)
+					entityId,
+					updatedAt
 				};
 				let files = [];
 				if (googleFiles) {
-					// Önce verilen listede ara
-					files = googleFiles.filter(f => f.appProperties?.noteId === noteId);
-					log(`🔍 ${noteId} verilen listede aranıyor...`);
+					files = googleFiles.filter(f => f.appProperties?.entityId === entityId);
+					log(`🔍 Searching for ${entityId} in the given list...`);
 				}
+				
 				if (files.length === 0) {
-					// Verilen listede bulunamadı veya liste null, Google Drive'dan ara
-					const q = `'${folderId}' in parents and appProperties has { key='noteId' and value='${noteId}' } and trashed=false`;
-					const r = await gapi.client.drive.files.list({
-						q,
-						spaces: 'drive',
-						fields: 'files(id,name,parents,appProperties)'
-					});
-					files = r.result.files || [];
-					log(`🔍 ${noteId} Google Drive'da aranıyor...`);
+					log(`Not found in the given list or the list is null, search from Google Drive`);
+					const q = `'${folderId}' in parents and appProperties has { key='entityId' and value='${entityId}' } and trashed=false`;
+					try {
+						// gapi.client.drive.files.list yerine fetch API kullan
+						const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id,name,appProperties)`, {
+							method: "GET",
+							headers: {
+								"Authorization": `Bearer ${accessToken}`
+							}
+						});
+						
+						if (!response.ok) {
+							const errorData = await response.json();
+							throw new Error(`File search error: ${errorData.error?.message || response.statusText}`);
+						}
+						
+						const data = await response.json();
+						files = data.files || [];
+						log(`🔍 Searching for ${entityId} in Google Drive...`);
+					} catch (error) {
+						log(`❌ driveSyncJson error: ${error.message}`, "error");
+						throw error;
+					}
 				}
+				
 				if (files.length > 0) {
-					log(`🔄 ${noteId} güncelleniyor...`);
+					log(`🔄 Updating ${entityId}...`);
 					return await driveUpdateJson(files[0].id, folderId, name, appProperties, envelope);
 				} else {
-					log(`📤 ${noteId} oluşturuluyor...`);
+					log(`📤 Creating ${entityId}...`);
 					return await driveCreateJson(folderId, name, appProperties, envelope);
 				}
 			}
 
-		async function ensureFolder() {
-			if (appFolderId) {
-				log(`📁 NoteFlix klasörü zaten var: ${appFolderId}`);
-				return appFolderId;
-			}
-			log("🔍 NoteFlix klasörü aranıyor...");
-			const q = "mimeType='application/vnd.google-apps.folder' and name='NoteFlix' and trashed=false";
-			try {
-				const r = await gapi.client.drive.files.list({
-					q,
-					spaces: 'drive',
-					fields: 'files(id,name)'
-				});
-				if (r.result.files.length) {
-					appFolderId = r.result.files[0].id;
-					log(`✅ Mevcut NoteFlix klasörü bulundu: ${appFolderId}`);
+			async function ensureFolder() {
+				if (appFolderId) {
+					log(`📁 NoteFlix already defined: ${appFolderId}`);
 					return appFolderId;
 				}
-				log("📁 NoteFlix klasörü oluşturuluyor...");
-				const c = await gapi.client.drive.files.create({
-					resource: {
-						name: 'NoteFlix',
-						mimeType: 'application/vnd.google-apps.folder'
-					},
-					fields: 'id'
-				});
-				appFolderId = c.result.id;
-				log(`✅ Yeni NoteFlix klasörü oluşturuldu: ${appFolderId}`);
-				return appFolderId;
-			} catch (e) {
-				log(`❌ Google Drive klasör işlemi hatası: ${e.message}`, "error");
-				if (e.message.includes("network") || e.message.includes("internet") || e.message.includes("ERR_INTERNET_DISCONNECTED")) {
-					log(`⚠️ İnternet bağlantısı yok, klasör işlemi yapılamıyor`);
+				
+				log("🔍 NoteFlix folder searching...");
+				const q = "mimeType='application/vnd.google-apps.folder' and name='Noteflix' and trashed=false";
+				try {
+					// gapi.client.drive.files.list yerine fetch API kullan
+					const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id,name)`, {
+						method: "GET",
+						headers: {
+							"Authorization": `Bearer ${accessToken}`
+						}
+					});
+					
+					if (!listResponse.ok) {
+						const errorData = await listResponse.json();
+						throw new Error(`Folder listing error: ${errorData.error?.message || listResponse.statusText}`);
+					}
+					
+					const listData = await listResponse.json();
+					if (listData.files.length) {
+						appFolderId = listData.files[0].id;
+						log(`✅ NoteFlix folder found: ${appFolderId}`);
+						return appFolderId;
+					}
+					
+					log("📁 NoteFlix folder creating...");
+					// gapi.client.drive.files.create yerine fetch API kullan
+					const createResponse = await fetch("https://www.googleapis.com/drive/v3/files", {
+						method: "POST",
+						headers: {
+							"Authorization": `Bearer ${accessToken}`,
+							"Content-Type": "application/json"
+						},
+						body: JSON.stringify({
+							name: 'NoteFlix',
+							mimeType: 'application/vnd.google-apps.folder'
+						})
+					});
+					
+					if (!createResponse.ok) {
+						const errorData = await createResponse.json();
+						throw new Error(`Folder creating error: ${errorData.error?.message || createResponse.statusText}`);
+					}
+					
+					const createData = await createResponse.json();
+					appFolderId = createData.id;
+					log(`✅ NoteFlix folder created: ${appFolderId}`);
+					return appFolderId;
+				} catch (e) {
+					log(`❌ Google Drive folder error: ${e.message}`, "error");
+					if (e.message.includes("network") || e.message.includes("internet") || e.message.includes("ERR_INTERNET_DISCONNECTED")) {
+						log(`⚠️ No internet connection, folder operation cannot be performed.`);
+					}
+					throw e; 
 				}
-				throw e; // Hata yukarıya fırlatılsın
 			}
-		}
+			
 			// ==========================
-			// Save / Load
+			// Save/Copy/Delete/Load Note
 			// ==========================
 			async function saveNote() {
 				log("saveNote");
-				const title = $('#title').value;
-				const delta = quill.getContents();
+				//prepare properties
 				const id = currentNoteId || ('n_' + Date.now());
+				const title = $('#title').value;				
+				const delta = quill ? quill.getContents() : '';
+				const deltaText = quill ? quill.getText().trim() : '';				
+				const existingNote = currentNoteId ? await db.notes.get(currentNoteId) : null;				
 				const now = new Date().toISOString();
+				
+				//write OPFS
 				const plain = {
 					id,
 					title,
+					createdAt: existingNote?.createdAt || now,
 					updatedAt: now,
-					content: delta
+					content: delta,
+					contentText: deltaText
 				};
+				
 				const key = await deriveKey(userEmail || "demo", "salt");
 				masterKey = key;
-				const env = await encryptJSON(key, plain);
+				const env = await encryptJSON(key, plain);				
 				await opfsWrite(id + ".json", JSON.stringify(env));
-				// Mevcut kaydı kontrol et (güncelleme mi yoksa yeni kayıt mı)
-				const existingNote = currentNoteId ? await db.notes.get(currentNoteId) : null;
 				
+				//save indexedDB				
 				await db.notes.put({
 				  id,
 				  title,
-				  createdAt: existingNote ? existingNote.createdAt : now,  // Sadece yeni kayıtta doldur
+				  plainText: deltaText,
+				  pendingInt: 1,	//not syncronized with google drive yet
+				  cachedInt: 1,		//written to opfs
+				  createdAt: existingNote ? existingNote.createdAt : now,
 				  updatedAt: now,
-				  pendingInt: 1,
-				  cachedInt: 1,
 				  accessedAt: Date.now(),
-				  googleFileId: existingNote ? existingNote.googleFileId : null  // Mevcut googleFileId'yi koru
+				  googleFileId: existingNote ? existingNote.googleFileId : null ,
+				  isDeleted: 0
 				});
+				
 				currentNoteId = id;
+				//refresh note list
 				await refreshList();
-				// İnternet bağlantısı kontrolü
-				if (navigator.onLine && accessToken && appFolderId) {
+				log("💾 Saved to local db (pending)");
+				
+				// İnternet bağlantısı varsa ve google drive'a bağlandıysa
+				if (navigator.onLine && accessToken) {
 					try {
 						await ensureFolder();
-						log("💾 Yerelde kaydedildi (pending1)");
-						log("🔄 ${id} Google Drive'a senkronize ediliyor...");
-						const result = await driveSyncJson(appFolderId, id, env);
+						
+						log("🔄 ${id} Google Drive is syncronizing...");
+						const result = await driveSyncJson(appFolderId, id, now, env);
+						
 						await db.notes.update(id, {
+							pendingInt: 0,
 							googleFileId: result.result.id
 						});
-						log(`✅ ${id} Google Drive'a başarıyla senkronize edildi`);
+						log(`✅ ${id} Google Drive syncronized succesfully`);
+						
+						await refreshList();
 					} catch (e) {
-						log(`❌ ${id} Google Drive senkronizasyon hatası: ${e.message}`, "error");
+						log(`❌ ${id} Google Drive syncronizing error: ${e.message}`, "error");
 						// İnternet hatası durumunda sadece yerel kayıt yapıldığını belirt
 						if (e.message.includes("network") || e.message.includes("internet") || e.message.includes("ERR_INTERNET_DISCONNECTED")) {
-							log(`⚠️ İnternet bağlantısı yok, sadece yerel kayıt yapıldı. İnternet geldiğinde senkronize edilecek.`);
+							alert(`⚠️ No internet connection, only saved to local db. It will sync when the internet is available.`);
+						}
+						else{
+							alert(`❌ ${id} Google Drive sync error: ${e.message}`, "error");
 						}
 					}
 				} else {
-					log("💾 Yerelde kaydedildi (pending2)");
 					if (!navigator.onLine) {
-						log("⚠️ İnternet bağlantısı yok, sadece yerel kayıt yapıldı");
+						alert("⚠️ No internet connection, only saved to local db");
 					} else if (!accessToken) {
-						log("⚠️ Google Drive'a bağlı değil, sadece yerel kayıt yapıldı");
+						alert("⚠️Not connected to Google Drive, only saved to local db");
 					}
+				}			
+			}
+
+			async function copyNote(id) {
+				log(`📋 ${id} notu kopyalanıyor...`);
+				
+				try {
+					// 1. Orijinal notu oku
+					const originalNote = await db.notes.get(id);
+					if (!originalNote) {
+						log(`❌ ${id} notu bulunamadı`, "error");
+						return;
+					}
+					
+					// 2. OPFS'ten içeriği oku
+					const txt = await opfsRead(id + ".json");
+					if (!txt) {
+						log(`❌ ${id} için OPFS dosyası bulunamadı`, "error");
+						return;
+					}
+					
+					// 3. İçeriği çöz
+					const env = JSON.parse(txt);
+					const key = masterKey || await deriveKey(userEmail || "demo", "salt");
+					const noteContent = await decryptJSON(key, env.iv, env.cipher);
+					
+					// 4. Yeni ID oluştur
+					const newId = 'n_' + Date.now();
+					const now = new Date().toISOString();
+					
+					// 5. Kopyalanan not için yeni içerik oluştur
+					const copiedContent = {
+						id: newId,
+						title: noteContent.title + ' (Kopya)',
+						createdAt: now,
+						updatedAt: now,
+						content: noteContent.content
+					};
+					
+					// 6. Yeni notu şifrele ve OPFS'e kaydet
+					const newEnv = await encryptJSON(key, copiedContent);
+					await opfsWrite(newId + ".json", JSON.stringify(newEnv));
+					
+					// 7. IndexedDB'ye yeni kayıt ekle
+					await db.notes.put({
+						id: newId,
+						title: copiedContent.title,
+						plainText: originalNote.plainText,
+						pendingInt: 1, // Yeni not, senkronize edilmeli
+						cachedInt: 1,
+						createdAt: now,
+						updatedAt: now,
+						accessedAt: Date.now(),
+						googleFileId: null, // Yeni not, henüz Google Drive'da yok
+						isDeleted: 0
+					});
+					
+					// 8. Liste güncelle
+					await refreshList();
+					log(`✅ ${id} başarıyla kopyalandı (Yeni ID: ${newId})`);
+					
+					// 9. Eğer online ise Google Drive'a da senkronize et
+					if (navigator.onLine && accessToken) {
+						try {
+							await ensureFolder();
+							log(`🔄 ${newId} Google Drive'a senkronize ediliyor...`);
+							const result = await driveSyncJson(appFolderId, newId, now, newEnv);
+							await db.notes.update(newId, {
+								pendingInt: 0,
+								googleFileId: result.result.id
+							});
+							log(`✅ ${newId} Google Drive'a başarıyla senkronize edildi`);
+							await refreshList();
+						} catch (e) {
+							log(`❌ ${newId} Google Drive senkronizasyon hatası: ${e.message}`, "error");
+						}
+					}
+					
+				} catch (e) {
+					log(`❌ ${id} kopyalama hatası: ${e.message}`, "error");
 				}
 			}
 
-			async function loadNoteById(id) {
+			async function deleteNote(id) {
+				log(`🗑️ ${id} notu siliniyor...`);
+				
+				try {
+					// 0. Önce not kaydını al
+					const noteRecord = await db.notes.get(id);
+					if (!noteRecord) {
+						log(`❌ ${id} notu bulunamadı`, "error");
+						return;
+					}
+					// 1. IndexedDB'de soft delete yap
+					await db.notes.update(id, {
+						isDeleted: 1,
+						updatedAt: new Date().toISOString()
+					});
+						
+					// 2. OPFS dosyasını sil
+					await opfsDelete(id + ".json");
+					log(`✅ ${id} OPFS dosyası silindi`);
+					
+					// 3. Liste güncelle
+					await refreshList();
+					
+					// 4. Not Google Drive'a entegre edilmiş, Drive'da da silindi olarak işaretle
+					if (noteRecord.googleFileId) {					
+						// Google Drive işlemi için internet ve token kontrolü
+						if (navigator.onLine && accessToken) {
+							try {		
+								await ensureFolder();
+								
+								// Mevcut dosyayı oku
+								const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${noteRecord.googleFileId}?alt=media`, {
+									method: "GET",
+									headers: {
+										"Authorization": `Bearer ${accessToken}`
+									}
+								});
+								
+								if (fileResponse.ok) {
+									const fileBody = await fileResponse.text();
+									const envelope = JSON.parse(fileBody);
+									console.log('envelope:' + JSON.stringify(envelope));
+									
+									// appSettings'e isDeleted ekle
+									envelope.appSettings = envelope.appSettings || {};
+									envelope.appSettings.isDeleted = 1;
+									
+									// Güncellenmiş dosyayı Drive'a geri yaz
+									const appProperties = {
+										app: 'noteflix',
+										entityId: id,
+										updatedAt: new Date().toISOString(),
+										isDeleted: 1
+									};
+									
+									await driveUpdateJson(noteRecord.googleFileId, appFolderId, `${id}.json`, appProperties, envelope);
+									log(`✅ ${id} Google Drive'da silindi olarak işaretlendi`);
+								}
+							} catch (e) {
+								log(`❌ ${id} Google Drive güncelleme hatası: ${e.message}`, "error");
+							}
+						} else {
+							log(`⚠️ ${id} Google Drive güncellemesi yapılamadı (internet/token yok), sadece yerel silme yapıldı`);
+						}
+					} else {
+						// Not henüz Google Drive'a entegre edilmemiş, IndexedDB'den tamamen sil
+						await db.notes.delete(id);
+						log(`✅ ${id} IndexedDB'den tamamen silindi (Google Drive entegrasyonu yok)`);
+					}
+					
+					log(`✅ ${id} başarıyla silindi`);
+					
+				} catch (e) {
+					log(`❌ ${id} silme hatası: ${e.message}`, "error");
+				}
+			}
+
+			async function loadNote(id) {
 				const txt = await opfsRead(id + ".json");
+				currentNoteId = id;
+				
 				if (txt) {
 					try {
 						const env = JSON.parse(txt);
 						const key = masterKey || await deriveKey(userEmail || "demo", "salt");
 						const note = await decryptJSON(key, env.iv, env.cipher);
+						
 						$('#title').value = note.title;
-						quill.setContents(note.content);
-						currentNoteId = id;
+						quill.setContents(note.content);						
 						await db.notes.update(id, {
 							accessedAt: Date.now()
 						});
@@ -460,24 +765,38 @@
 					} catch {}
 				}
 				// OPFS'te bulunamadı, Google Drive'dan oku
-				if (accessToken && appFolderId) {
+				if (navigator.onLine && accessToken) {
 					try {
+						await ensureFolder();
+					
 						const noteRecord = await db.notes.get(id);
 						if (noteRecord && noteRecord.googleFileId) {
 							log(`📥 ${id} Google Drive'dan yükleniyor...`);
-							const file = await gapi.client.drive.files.get({
-								fileId: noteRecord.googleFileId,
-								alt: 'media'
+							const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${noteRecord.googleFileId}?alt=media`, {
+								method: "GET",
+								headers: {
+									"Authorization": `Bearer ${accessToken}`
+								}
 							});
+							
+							if (!fileResponse.ok) {
+								const errorData = await fileResponse.json();
+								throw new Error(`Dosya indirme hatası: ${errorData.error?.message || fileResponse.statusText}`);
+							}
+							
+							const fileBody = await fileResponse.text();
+							const file = { body: fileBody };
 							// OPFS'e kaydet
 							await opfsWrite(id + ".json", file.body);
 							// Şifreli içeriği çöz
 							const env = JSON.parse(file.body);
 							const key = masterKey || await deriveKey(userEmail || "demo", "salt");
 							const note = await decryptJSON(key, env.iv, env.cipher);
+							
 							$('#title').value = note.title;
 							quill.setContents(note.content);
 							currentNoteId = id;
+							
 							await db.notes.update(id, {
 								accessedAt: Date.now(),
 								cachedInt: 1
@@ -501,21 +820,35 @@
 					return;
 				}
 				await ensureFolder();
+				
 				// pull from Google Drive
-				const driveList = await gapi.client.drive.files.list({
-					q: `'${appFolderId}' in parents and mimeType='application/json' and trashed=false`,
-					fields: "files(id, name, modifiedTime, appProperties)",
-					pageSize: 1000
+				const q = `'${appFolderId}' in parents and mimeType='application/json' and trashed=false`;
+				const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&pageSize=1000`, {
+					method: "GET",
+					headers: {
+						"Authorization": `Bearer ${accessToken}`
+					}
 				});
-				const driveFiles = driveList.result.files;
+				
+				if (!listResponse.ok) {
+					const errorData = await listResponse.json();
+					throw new Error(`Drive dosya listesi hatası: ${errorData.error?.message || listResponse.statusText}`);
+				}
+				
+				const listData = await listResponse.json();
+				const driveFiles = listData.files;
 				log(`📥 Drive'dan ${driveFiles.length} dosya listelendi`);
+				
 				const localNotes = await db.notes.toArray();
 				const localMap = new Map(localNotes.map(n => [n.id, n]));
+				
 				for (const f of driveFiles) {
+					console.log('f:' + JSON.stringify(f));
 					// appProperties'den noteId'yi al
-					const id = f.appProperties?.noteId || (f.name.endsWith('.json') ? f.name.slice(0, -5) : f.name);
-					const driveUpdated = new Date(f.modifiedTime);
-					const local = localMap.get(id);
+					const id = f.appProperties?.entityId || (f.name.endsWith('.json') ? f.name.slice(0, -5) : f.name);
+					const driveUpdated = new Date(f.appProperties?.updatedAt);
+					const local = localMap.get(id);console.log('local:' + JSON.stringify(local));
+					
 					if (!local) {
 						// Önce OPFS'te dosya var mı kontrol et
 						const existingOpfsContent = await opfsRead(id + ".json");
@@ -524,19 +857,21 @@
 							try {
 								const existingEnv = JSON.parse(existingOpfsContent);
 								const key = masterKey || await deriveKey(userEmail || "demo", "salt");
-								const existingNote = await decryptJSON(key, existingEnv.iv, existingEnv.cipher);
-								const existingUpdated = new Date(existingNote.updatedAt);
-								const driveUpdated = new Date(f.modifiedTime);
-								if (existingUpdated > driveUpdated) {
+								const opfsNote = await decryptJSON(key, existingEnv.iv, existingEnv.cipher);
+								const opfsNoteUpdated = new Date(opfsNote.updatedAt);
+								
+								if (opfsNoteUpdated > driveUpdated) {
 									log(`⚠️ ${id} lokaldeki daha güncel, Drive'dan indirilmedi`);
 									// Lokaldeki daha güncel, sadece googleFileId'yi kaydet
 									  await db.notes.put({
 										id,
-										title: existingNote.title,
-										createdAt: existingNote.createdAt,  // Mevcut createdAt'i koru
-										updatedAt: existingNote.updatedAt,
+										title: opfsNote.title,
+										plaintext: opfsNote.contentText,
+										createdAt: opfsNote.createdAt,  // Mevcut createdAt'i koru
+										updatedAt: opfsNote.updatedAt,
 										pendingInt: 1, // Lokaldeki daha güncel, senkronize et
 										cachedInt: 1,
+										isDeleted: 0,
 										accessedAt: Date.now(),
 										googleFileId: f.id
 									  });
@@ -547,42 +882,79 @@
 							}
 						}
 						// Drive'daki daha güncel veya OPFS'te dosya yok
-						const file = await gapi.client.drive.files.get({
-							fileId: f.id,
-							alt: 'media'
+						const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+							method: "GET",
+							headers: {
+								"Authorization": `Bearer ${accessToken}`
+							}
 						});
+						
+						if (!fileResponse.ok) {
+							const errorData = await fileResponse.json();
+							throw new Error(`Dosya indirme hatası: ${errorData.error?.message || fileResponse.statusText}`);
+						}
+						
+						const fileBody = await fileResponse.text();
+						const file = { body: fileBody };
 						
 						const envTemp = JSON.parse(file.body);
 						const keyTemp = masterKey || await deriveKey(userEmail || "demo", "salt");
 						const noteTemp = await decryptJSON(keyTemp, envTemp.iv, envTemp.cipher);
-						
+						console.log('noteTemp:' + JSON.stringify(noteTemp));
 						await opfsWrite(id + ".json", file.body);
+						
 						await db.notes.put({
 						  id,
 						  title: noteTemp.title,
-						  createdAt: f.modifiedTime,  // Drive'dan indirilen dosya için creation time
-						  updatedAt: f.modifiedTime,
+						  plainText: noteTemp.contentText,
+						  createdAt: noteTemp.createdAt,  // Drive'dan indirilen dosya için creation time
+						  updatedAt: noteTemp.updatedAt,
 						  pendingInt: 0,
 						  cachedInt: 1,
+						  isDeleted: f.appProperties?.isDeleted || '0',
 						  accessedAt: Date.now(),
 						  googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
 						});
 						log(`⬇️ ${id} Drive'dan indirildi`);
 					} else {
 						const localUpdated = new Date(local.updatedAt);
+						console.log('localUpdated:' + localUpdated);
+						console.log('driveUpdated:' + driveUpdated);
+						
 						if (driveUpdated > localUpdated) {
-							const file = await gapi.client.drive.files.get({
-								fileId: f.id,
-								alt: 'media'
+							console.log('1');
+							const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+								method: "GET",
+								headers: {
+									"Authorization": `Bearer ${accessToken}`
+								}
 							});
+							
+							if (!fileResponse.ok) {
+								const errorData = await fileResponse.json();
+								throw new Error(`Dosya indirme hatası: ${errorData.error?.message || fileResponse.statusText}`);
+							}
+							
+							const fileBody = await fileResponse.text();
+							const file = { body: fileBody };
 							await opfsWrite(id + ".json", file.body);
-              await db.notes.put({
-                ...local,
-                createdAt: local.createdAt,  // Mevcut createdAt'i koru
-                updatedAt: f.modifiedTime,
-                cachedInt: 1,
-                googleFileId: f.id // Drive'dan güncellenen dosyanın ID'sini kaydet
-              });
+							
+							const envTemp = JSON.parse(file.body);
+							const keyTemp = masterKey || await deriveKey(userEmail || "demo", "salt");
+							const noteTemp = await decryptJSON(keyTemp, envTemp.iv, envTemp.cipher);
+							
+							await db.notes.put({								
+								id,
+								title: noteTemp.title,
+								plainText: noteTemp.contentText,
+								createdAt: noteTemp.createdAt,  // Drive'dan indirilen dosya için creation time
+								updatedAt: noteTemp.updatedAt,
+								pendingInt: 0,
+								cachedInt: 1,
+								isDeleted: noteTemp?.isDeleted || '0',
+								accessedAt: Date.now(),
+								googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
+							});
 						}
 					}
 				}
@@ -602,24 +974,28 @@
 							rev: 0
 						};
 						let result;
+						/*
 						if (n.googleFileId) {
 							// Dosya zaten Drive'da var, direkt güncelle
 							log(`🔄 ${n.id} güncelleniyor (ID: ${n.googleFileId})...`);
 							result = await driveUpdateJson(n.googleFileId, appFolderId, `${n.id}.json`, {
 								app: 'Noteflix',
-								noteId: n.id,
-								version: String(envelope.meta?.rev || 0)
+								entityId: n.id
 							}, envelope);
 						} else {
 							// İlk kez Drive'a yükleniyor
 							log(`📤 ${n.id} ilk kez Drive'a yükleniyor...`);
-							result = await driveSyncJson(appFolderId, n.id, envelope, driveFiles);
+							result = await driveSyncJson(appFolderId, n.id, n.updatedAt, envelope, driveFiles);
 						}
+						*/
+						result = await driveSyncJson(appFolderId, n.id, n.updatedAt, envelope, driveFiles);
+						
 						log(`✅ ${n.id} başarıyla işlendi: ${result.result.name} (ID: ${result.result.id})`);
 						await db.notes.update(n.id, {
 							pendingInt: 0,
 							googleFileId: result.result.id // Google File ID'yi kaydet
 						});
+						
 						log(`✅ ${n.id} başarıyla senkronize edildi`);
 					} catch (e) {
 						log(`❌ ${n.id} senkronizasyon hatası: ${e.message}`, "error");
@@ -628,6 +1004,7 @@
 				log("✅ Senkronizasyon tamamlandı");
 				await refreshList();
 			}
+			
 			window.addEventListener("online", () => {
 				SynchronizeGoogleDrive();
 			});
@@ -635,23 +1012,44 @@
 			// ==========================
 			// Background Preload
 			// ==========================
-			async function backgroundPreload() {
+			async function backgroundPreload() {				
 				if (!accessToken || !navigator.onLine) return;
 				const metas = await db.notes.where("cachedInt").equals(0).toArray();
+				console.log('backgroundPreload.metas:' + metas);
 				for (const n of metas) {
 					try {
 						const q = `'${appFolderId}' in parents and name='${n.id}' and trashed=false`;
-						const r = await gapi.client.drive.files.list({
-							q,
-							spaces: 'drive',
-							fields: 'files(id)'
+						// gapi.client.drive.files.list yerine fetch API kullan
+						const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id)`, {
+							method: "GET",
+							headers: {
+								"Authorization": `Bearer ${accessToken}`
+							}
 						});
-						if (!r.result.files.length) continue;
-						const f = await gapi.client.drive.files.get({
-							fileId: r.result.files[0].id,
-							alt: "media"
+						
+						if (!listResponse.ok) {
+							const errorData = await listResponse.json();
+							throw new Error(`Dosya listesi hatası: ${errorData.error?.message || listResponse.statusText}`);
+						}
+						
+						const listData = await listResponse.json();
+						if (!listData.files.length) continue;
+						
+						// gapi.client.drive.files.get yerine fetch API kullan
+						const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${listData.files[0].id}?alt=media`, {
+							method: "GET",
+							headers: {
+								"Authorization": `Bearer ${accessToken}`
+							}
 						});
-						await opfsWrite(n.id + ".json", f.body);
+						
+						if (!fileResponse.ok) {
+							const errorData = await fileResponse.json();
+							throw new Error(`Dosya indirme hatası: ${errorData.error?.message || fileResponse.statusText}`);
+						}
+						
+						const fileBody = await fileResponse.text();
+						await opfsWrite(n.id + ".json", fileBody);
 						await db.notes.update(n.id, {
 							cachedInt: 1,
 							accessedAt: Date.now()
@@ -663,7 +1061,8 @@
 					}
 				}
 			}
-			setInterval(backgroundPreload, 30000);
+			
+			setInterval(backgroundPreload, 300000);
 
 			// ==========================
 			// Quota + LRU
@@ -684,7 +1083,8 @@
 			// UI
 			// ==========================
 			async function refreshList() {
-				const rows = await db.notes.orderBy("updatedAt").reverse().toArray();
+				const allRows = await db.notes.orderBy("updatedAt").reverse().toArray();
+				const rows = allRows.filter(n => n.isDeleted !== 1);
 				const tb = $('#notesTable');
 				tb.innerHTML = "";
 				for (const n of rows) {
@@ -696,13 +1096,27 @@
 						<td>${n.updatedAt}</td>
 						<td>${status}</td>
 						<td>
-							<button onclick="loadNoteById('${n.id}')">Yükle</button>
+							<button onclick="loadNote('${n.id}')">Yükle</button>
+							<button onclick="copyNote('${n.id}')">Kopyala</button>
+							<button onclick="deleteNote('${n.id}')">Sil</button>
 						</td>`;
 					tb.appendChild(tr);
 				}
 			}
 
-			$('#signinBtn').onclick = () => {
+			$('#googleConnectBtn').onclick = () => {
+				// Eğer zaten bağlıysa, bağlantıyı kes
+				if (accessToken) {
+					clearGoogleAuthState();
+					accessToken = null;
+					userEmail = null;
+					appFolderId = null;
+					$('#who').textContent = 'Bağlı değil';
+					$('#googleConnectBtn').textContent = 'Google\'a Bağlan';
+					log("🔌 Google bağlantısı kesildi");
+					return;
+				}
+
 				try {
 					if (typeof google === 'undefined' || !google.accounts) {
 						log("❌ Google API henüz yüklenmedi, lütfen bekleyin", "error");
@@ -725,10 +1139,16 @@
 								const userInfo = await gapi.client.oauth2.userinfo.get();
 								userEmail = userInfo.result.email;
 								$('#who').textContent = `Bağlı: ${userEmail}`;
+								$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
 								log(`✅ Google Drive'a başarıyla bağlandı: ${userEmail}`);
+								// Bağlantı durumunu localStorage'a kaydet
+								saveGoogleAuthState(accessToken, userEmail);
 							} catch (e) {
 								$('#who').textContent = 'Bağlı';
+								$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
 								log("✅ Google Drive'a başarıyla bağlandı");
+								// Bağlantı durumunu localStorage'a kaydet
+								saveGoogleAuthState(accessToken, '');
 							}
 							ensureFolder();
 						}
@@ -761,10 +1181,50 @@
 						discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
 					});
 					log("✅ Google API başarıyla yüklendi");
+					
+					// Sayfa yüklendiğinde kaydedilmiş bağlantı durumunu kontrol et
+					await restoreGoogleAuth();
 				} catch (e) {
 					log("❌ Google API yükleme hatası: " + e.message, "error");
 				}
 			}
+
+			// Kaydedilmiş Google bağlantısını geri yükle
+			async function restoreGoogleAuth() {
+				const { token, email } = loadGoogleAuthState();
+				if (token) {
+					try {
+						// Token'ın hala geçerli olup olmadığını kontrol et
+						accessToken = token;
+						userEmail = email;
+						gapi.client.setToken({
+							access_token: accessToken
+						});
+						
+						// Token'ı test et
+						const testResponse = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?access_token=' + accessToken);
+						if (testResponse.ok) {
+							$('#who').textContent = email ? `Bağlı: ${email}` : 'Bağlı';
+							$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
+							log("✅ Google bağlantısı otomatik olarak geri yüklendi");
+							await ensureFolder();
+						} else {
+							// Token geçersiz, temizle
+							clearGoogleAuthState();
+							accessToken = null;
+							userEmail = null;
+							log("⚠️ Kaydedilmiş token geçersiz, temizlendi");
+						}
+					} catch (e) {
+						// Token geçersiz, temizle
+						clearGoogleAuthState();
+						accessToken = null;
+						userEmail = null;
+						log("⚠️ Kaydedilmiş bağlantı geri yüklenemedi: " + e.message);
+					}
+				}
+			}
+			
 			// Sayfa yüklendikten sonra gapi'yi başlat
 			window.addEventListener('load', () => {
 				setTimeout(initGapi, 1000); // 1 saniye bekle
