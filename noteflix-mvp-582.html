@@ -97,6 +97,86 @@
 				border: 1px solid #444;
 				padding: 4px;
 			}
+
+			/* Overlay arkaplan */
+			#historyOverlay {
+				display:none;
+				position:fixed;
+				top:0; left:0; right:0; bottom:0;
+				background:rgba(0,0,0,0.6);
+				z-index:999;
+				backdrop-filter: blur(3px);
+			}
+
+			/* Modal kutusu */
+			#historyModal {
+				position:fixed;
+				top:10%;
+				left:50%;
+				transform:translateX(-50%);
+				background:#1e1e1e;
+				color:#eee;
+				padding:20px;
+				border-radius:12px;
+				width:600px;
+				max-height:70%;
+				overflow:auto;
+				z-index:1000;
+				box-shadow:0 4px 20px rgba(0,0,0,0.4);
+				animation: fadeIn 0.3s ease;
+			}
+
+			#historyModal h3 {
+				margin-top:0;
+				font-size:18px;
+				border-bottom:1px solid #444;
+				padding-bottom:8px;
+			}
+
+			#historyModal table {
+				width:100%;
+				border-collapse:collapse;
+				margin:10px 0;
+				font-size:14px;
+			}
+
+			#historyModal th, #historyModal td {
+				border-bottom:1px solid #333;
+				padding:8px;
+				text-align:left;
+			}
+
+			#historyModal tr:hover {
+				background:#2a2a2a;
+			}
+
+			#historyModal button {
+				background:#333;
+				border:none;
+				color:#eee;
+				padding:6px 10px;
+				border-radius:6px;
+				cursor:pointer;
+				font-size:13px;
+				margin:2px;
+				transition:background 0.2s;
+			}
+
+			#historyModal button:hover {
+				background:#555;
+			}
+
+			#historyModal .closeBtn {
+				margin-top:10px;
+				float:right;
+				background:#c33;
+			}
+
+			@keyframes fadeIn {
+				from { opacity:0; transform:translate(-50%, -20%); }
+				to { opacity:1; transform:translate(-50%, 0); }
+			}
+
 		</style>
 	</head>
 	<body>
@@ -136,6 +216,21 @@
 			</table>
 			<h3>Durum Logları</h3>
 			<div id="status"></div>
+			<!-- History Modal -->
+			<div id="historyModal" style="display:none" class="history-modal">
+				<h3>Revision History</h3>
+				<table style="width:100%; border-collapse:collapse;">
+					<thead>
+						<tr>
+							<th>Tarih</th>
+							<th>İşlem</th>
+						</tr>
+					</thead>
+					<tbody id="historyTable"></tbody>
+				</table>
+				<button onclick="closeHistoryModal()">Kapat</button>
+			</div>
+			<div id="historyOverlay"></div>
 		</main>
 		<script>
 			// ==========================
@@ -212,7 +307,8 @@
 			
 			const db = new Dexie('noteflix');
 			db.version(1).stores({
-				notes: 'id,title,plainText,pendingInt,cachedInt,createdAt,updatedAt,accessedAt,googleFileId,isDeleted,revision'
+				notes: 'id,title,plainText,pendingInt,cachedInt,createdAt,updatedAt,accessedAt,googleFileId,isDeleted,revision',
+				secureStorage: 'key'
 			});
 			
 			const GOOGLE_CLIENT_ID = "888004155857-u09rcm3g84iqief0c2hs03kci3psr7ib.apps.googleusercontent.com";
@@ -224,22 +320,167 @@
 				userEmail = null;
 
 			// ==========================
+			// Güvenli Storage (IndexedDB)
+			// ==========================
+			const secureStorage = {
+				async setItem(key, value) {
+					try {
+						await db.table('secureStorage').put({ key, value, timestamp: Date.now() });
+					} catch (e) {
+						log(`Secure storage set error: ${e.message}`, "error");
+					}
+				},
+				
+				async getItem(key) {
+					try {
+						const result = await db.table('secureStorage').get(key);
+						return result ? result.value : null;
+					} catch (e) {
+						log(`Secure storage get error: ${e.message}`, "error");
+						return null;
+					}
+				},
+				
+				async removeItem(key) {
+					try {
+						await db.table('secureStorage').delete(key);
+					} catch (e) {
+						log(`Secure storage remove error: ${e.message}`, "error");
+					}
+				},
+				
+				async clear() {
+					try {
+						await db.table('secureStorage').clear();
+					} catch (e) {
+						log(`Secure storage clear error: ${e.message}`, "error");
+					}
+				}
+			};
+
+			// ==========================
 			// Google Token
 			// ==========================
-			function saveGoogleAuthState(token, email) {
-				localStorage.setItem('noteflix_google_token', token);
-				localStorage.setItem('noteflix_google_email', email);
+			async function saveGoogleAuthState(token, email) {
+				await secureStorage.setItem('google_token', token);
+				await secureStorage.setItem('google_email', email);
 			}
 
-			function loadGoogleAuthState() {
-				const token = localStorage.getItem('noteflix_google_token');
-				const email = localStorage.getItem('noteflix_google_email');
+			async function loadGoogleAuthState() {
+				const token = await secureStorage.getItem('google_token');
+				const email = await secureStorage.getItem('google_email');
 				return { token, email };
 			}
 
-			function clearGoogleAuthState() {
-				localStorage.removeItem('noteflix_google_token');
-				localStorage.removeItem('noteflix_google_email');
+			async function clearGoogleAuthState() {
+				await secureStorage.removeItem('google_token');
+				await secureStorage.removeItem('google_email');
+				await clearMasterKey();
+				masterKey = null;
+			}
+
+			// ==========================
+			// Master Key Güvenli Storage
+			// ==========================
+			async function saveMasterKey(key) {
+				// Master key'i session-based sakla (tarayıcı kapandığında silinsin)
+				sessionStorage.setItem('noteflix_master_key', JSON.stringify(Array.from(key)));
+			}
+
+			async function loadMasterKey() {
+				try {
+					const stored = sessionStorage.getItem('noteflix_master_key');
+					if (stored) {
+						const keyArray = JSON.parse(stored);
+						// CryptoKey objesi geri yüklenemez, yeniden türetilmeli
+						return null; // Force re-derivation for security
+					}
+				} catch (e) {
+					log(`Master key load error: ${e.message}`, "error");
+				}
+				return null;
+			}
+
+			async function clearMasterKey() {
+				sessionStorage.removeItem('noteflix_master_key');
+			}
+			
+			async function restoreGoogleAuth() {
+				const { token, email } = await loadGoogleAuthState();
+				if (token) {
+					try {
+						// Token'ın hala geçerli olup olmadığını kontrol et
+						accessToken = token;
+						userEmail = email;
+						gapi.client.setToken({
+							access_token: accessToken
+						});
+						
+						// Token'ı test et
+						const testResponse = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?access_token=' + accessToken);
+						if (testResponse.ok) {
+							$('#who').textContent = email ? `Bağlı: ${email}` : 'Bağlı';
+							$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
+							log("✅ Google bağlantısı otomatik olarak geri yüklendi");
+							
+							// Master key'i yükle (session-based)
+							const loadedKey = await loadMasterKey();
+							if (loadedKey) {
+								masterKey = loadedKey;
+								log("🔑 Master key session'dan yüklendi");
+							} else {
+								// Master key yoksa yeniden türet
+								masterKey = await deriveKey(email || "demo", "salt");
+								await saveMasterKey(masterKey);
+								log("🔑 Master key yeniden türetildi");
+							}
+							
+							await ensureFolder();
+						} else {
+							// Token geçersiz, temizle
+							clearGoogleAuthState();
+							accessToken = null;
+							userEmail = null;
+							log("⚠️ Kaydedilmiş token geçersiz, temizlendi");
+						}
+					} catch (e) {
+						// Token geçersiz, temizle
+						clearGoogleAuthState();
+						accessToken = null;
+						userEmail = null;
+						log("⚠️ Kaydedilmiş bağlantı geri yüklenemedi: " + e.message);
+					}
+				}
+			}
+			
+			async function initGapi() {
+				try {
+					// gapi'nin yüklenmesini bekle
+					await new Promise(resolve => {
+						if (typeof gapi !== 'undefined') {
+							resolve();
+						} else {
+							const checkGapi = () => {
+								if (typeof gapi !== 'undefined') {
+									resolve();
+								} else {
+									setTimeout(checkGapi, 100);
+								}
+							};
+							checkGapi();
+						}
+					});
+					await new Promise(res => gapi.load('client', res));
+					await gapi.client.init({
+						discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+					});
+					log("✅ Google API başarıyla yüklendi");
+					
+					// Sayfa yüklendiğinde kaydedilmiş bağlantı durumunu kontrol et
+					await restoreGoogleAuth();
+				} catch (e) {
+					log("❌ Google API yükleme hatası: " + e.message, "error");
+				}
 			}
 			
 			// ==========================
@@ -403,7 +644,8 @@
 				const appProperties = {
 					app: 'noteflix',
 					entityId,
-					updatedAt
+					updatedAt,
+					revision
 				};
 				let files = [];
 				if (googleFiles) {
@@ -445,6 +687,32 @@
 					return await driveCreateJson(folderId, name, appProperties, envelope);
 				}
 			}
+
+			async function listRevisions(fileId) {
+				const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/revisions?fields=revisions(id,modifiedTime,keepForever)`, {
+					headers: { Authorization: `Bearer ${accessToken}` }
+				});
+				if (!res.ok) throw new Error("Revision list error");
+				const data = await res.json();
+				return data.revisions || [];
+			}
+			
+			async function getRevision(fileId, revId) {
+				// Revision içeriğini almak için alt=media parametresi ile dosya içeriğini çekiyoruz
+				const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/revisions/${revId}?alt=media`, {
+					headers: { Authorization: `Bearer ${accessToken}` }
+				});
+				if (!res.ok) throw new Error(`Revision get error: ${res.status} ${res.statusText}`);
+				
+				const text = await res.text();
+				
+				try {
+					const data = JSON.parse(text);
+					return data;
+				} catch (parseError) {
+					throw new Error(`Failed to parse revision content: ${parseError.message}`);
+				}
+			}			
 
 			async function ensureFolder() {
 				if (appFolderId) {
@@ -508,15 +776,96 @@
 			}
 			
 			// ==========================
+			// History
+			// ==========================			
+			async function showHistory(noteId) {
+				const note = await db.notes.get(noteId);
+				if (!note?.googleFileId) {
+					alert("⚠️ Bu not Google Drive ile senkronize değil, history yok.");
+					return;
+				}
+				
+				if (!navigator.onLine) {
+					alert("⚠️ No internet connection");
+					return;
+				}
+				
+				if (!accessToken) {
+					alert("⚠️Not connected to Google Drive");
+					return;
+				}
+
+				try {
+					const revisions = await listRevisions(note.googleFileId);
+					const tbody = document.getElementById("historyTable");
+					tbody.innerHTML = "";
+
+					revisions.forEach(r => {
+						const tr = document.createElement("tr");
+						tr.innerHTML = `
+							<td>${new Date(r.modifiedTime).toLocaleString()}</td>
+							<td>
+								<button onclick="previewRevision('${note.googleFileId}','${r.id}')">Preview</button>
+								<button onclick="restoreRevision('${note.googleFileId}','${r.id}','${noteId}')">Restore</button>
+							</td>`;
+						tbody.appendChild(tr);
+					});
+
+					document.getElementById("historyModal").style.display = "block";
+				} catch (e) {
+					log(`❌ History list error: ${e.message}`, "error");
+				}
+			}
+
+			function closeHistoryModal() {
+				document.getElementById("historyModal").style.display = "none";
+			}
+			
+			async function previewRevision(fileId, revisionId) {
+				try {
+					const env = await getRevision(fileId, revisionId);
+					
+					// Veri kontrolü eklendi
+					if (!env || !env.iv || !env.cipher) {
+						throw new Error("Revision data is missing required fields");
+					}
+					
+					if (env.cipher.length < 16) { // AES-GCM için minimum cipher uzunluğu
+						throw new Error(`Cipher data too small: ${env.cipher.length} bytes`);
+					}
+					
+					const key = masterKey || await deriveKey(userEmail || "demo", "salt");
+					const note = await decryptJSON(key, env.iv, env.cipher);
+
+					alert(`📄 Preview\nBaşlık: ${note.title}\nTarih: ${note.updatedAt}\nİçerik: ${note.contentText?.slice(0,100)}...`);
+				} catch (e) {
+					log(`❌ Preview error: ${e.message}`, "error");
+				}
+			}
+
+			async function restoreRevision(fileId, revId, noteId) {
+				const env = await getRevision(fileId, revId);
+				await opfsWrite(noteId + ".json", JSON.stringify(env));
+				const key = masterKey || await deriveKey(userEmail || "demo", "salt");
+				const note = await decryptJSON(key, env.iv, env.cipher);
+				currentNoteId = noteId;
+				
+				saveNote(note.title, note.delta, note.deltatext);
+
+				currentNoteId = null;
+				log(`✅ Revision ${revId} restored for ${noteId}`);
+			}
+			
+			// ==========================
 			// Save/Copy/Delete/Load Note
 			// ==========================
-			async function saveNote() {
+			async function saveNote(title, delta, deltaText) {
 				log("saveNote");
 				//prepare properties
 				const id = currentNoteId || ('n_' + Date.now());
-				const title = $('#title').value;				
-				const delta = quill ? quill.getContents() : '';
-				const deltaText = quill ? quill.getText().trim() : '';				
+				//const title = $('#title').value;				
+				//const delta = quill ? quill.getContents() : '';
+				//const deltaText = quill ? quill.getText().trim() : '';				
 				const existingNote = currentNoteId ? await db.notes.get(currentNoteId) : null;				
 				const now = new Date().toISOString();
 				const revision = (existingNote?.revision || 0) + 1;
@@ -525,14 +874,15 @@
 				const plain = {
 					id,
 					title,
-					createdAt: existingNote?.createdAt || now,
 					updatedAt: now,
+					revision,
 					content: delta,
 					contentText: deltaText
 				};
 				
 				const key = await deriveKey(userEmail || "demo", "salt");
 				masterKey = key;
+				await saveMasterKey(key);
 				const env = await encryptJSON(key, plain);				
 				await opfsWrite(id + ".json", JSON.stringify(env));
 				
@@ -548,7 +898,7 @@
 				  accessedAt: Date.now(),
 				  googleFileId: existingNote ? existingNote.googleFileId : null ,
 				  isDeleted: 0,
-				  revision: revision
+				  revision
 				});
 				
 				currentNoteId = id;
@@ -714,7 +1064,6 @@
 								if (fileResponse.ok) {
 									const fileBody = await fileResponse.text();
 									const envelope = JSON.parse(fileBody);
-									console.log('envelope:' + JSON.stringify(envelope));
 									
 									// appSettings'e isDeleted ekle
 									envelope.appSettings = envelope.appSettings || {};
@@ -848,11 +1197,10 @@
 				const localMap = new Map(localNotes.map(n => [n.id, n]));
 				
 				for (const f of driveFiles) {
-					console.log('f:' + JSON.stringify(f));
 					// appProperties'den noteId'yi al
 					const id = f.appProperties?.entityId || (f.name.endsWith('.json') ? f.name.slice(0, -5) : f.name);
 					const driveUpdated = new Date(f.appProperties?.updatedAt);
-					const local = localMap.get(id);console.log('local:' + JSON.stringify(local));
+					const local = localMap.get(id);
 					
 					if (!local) {
 						// Önce OPFS'te dosya var mı kontrol et
@@ -878,7 +1226,8 @@
 										cachedInt: 1,
 										isDeleted: 0,
 										accessedAt: Date.now(),
-										googleFileId: f.id
+										googleFileId: f.id,
+										revision: opfsNote.revision
 									  });
 									continue; // Sonraki dosyaya geç
 								}
@@ -905,7 +1254,7 @@
 						const envTemp = JSON.parse(file.body);
 						const keyTemp = masterKey || await deriveKey(userEmail || "demo", "salt");
 						const noteTemp = await decryptJSON(keyTemp, envTemp.iv, envTemp.cipher);
-						console.log('noteTemp:' + JSON.stringify(noteTemp));
+
 						await opfsWrite(id + ".json", file.body);
 						
 						await db.notes.put({
@@ -918,16 +1267,14 @@
 						  cachedInt: 1,
 						  isDeleted: f.appProperties?.isDeleted || '0',
 						  accessedAt: Date.now(),
-						  googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
+						  googleFileId: f.id, // Drive'dan indirilen dosyanın ID'sini kaydet
+						  revision: noteTemp.revision
 						});
 						log(`⬇️ ${id} Drive'dan indirildi`);
 					} else {
 						const localUpdated = new Date(local.updatedAt);
-						console.log('localUpdated:' + localUpdated);
-						console.log('driveUpdated:' + driveUpdated);
 						
 						if (driveUpdated > localUpdated) {
-							console.log('1');
 							const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
 								method: "GET",
 								headers: {
@@ -958,7 +1305,8 @@
 								cachedInt: 1,
 								isDeleted: noteTemp?.isDeleted || '0',
 								accessedAt: Date.now(),
-								googleFileId: f.id // Drive'dan indirilen dosyanın ID'sini kaydet
+								googleFileId: f.id, // Drive'dan indirilen dosyanın ID'sini kaydet
+								revision: noteTemp.revision
 							});
 						}
 					}
@@ -1084,6 +1432,7 @@
 					});
 				}
 			}
+			
 			// ==========================
 			// UI
 			// ==========================
@@ -1103,19 +1452,40 @@
 						<td>
 							<button onclick="loadNote('${n.id}')">Yükle</button>
 							<button onclick="copyNote('${n.id}')">Kopyala</button>
+							<button onclick="showHistory('${n.id}')">Tarihçe</button>
 							<button onclick="deleteNote('${n.id}')">Sil</button>
 						</td>`;
 					tb.appendChild(tr);
 				}
 			}
+			
+			// Sayfa yüklendikten sonra gapi'yi başlat
+			window.addEventListener('load', () => {
+				setTimeout(initGapi, 1000); // 1 saniye bekle
+			});
 
-			$('#googleConnectBtn').onclick = () => {
+			$('#saveBtn').onclick = () => {
+				const title = $('#title').value;				
+				const delta = quill ? quill.getContents() : '';
+				const deltaText = quill ? quill.getText().trim() : '';
+				saveNote(title, delta, deltaText);
+			};
+			$('#syncBtn').onclick = SynchronizeGoogleDrive;
+			$('#newBtn').onclick = () => {
+				currentNoteId = null;
+				$('#title').value = "";
+				quill.setContents({
+					ops: []
+				});
+			};
+			$('#googleConnectBtn').onclick = async () => {
 				// Eğer zaten bağlıysa, bağlantıyı kes
 				if (accessToken) {
-					clearGoogleAuthState();
+					await clearGoogleAuthState();
 					accessToken = null;
 					userEmail = null;
 					appFolderId = null;
+					masterKey = null;
 					$('#who').textContent = 'Bağlı değil';
 					$('#googleConnectBtn').textContent = 'Google\'a Bağlan';
 					log("🔌 Google bağlantısı kesildi");
@@ -1146,14 +1516,20 @@
 								$('#who').textContent = `Bağlı: ${userEmail}`;
 								$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
 								log(`✅ Google Drive'a başarıyla bağlandı: ${userEmail}`);
-								// Bağlantı durumunu localStorage'a kaydet
-								saveGoogleAuthState(accessToken, userEmail);
+								// Master key'i türet ve sakla
+								masterKey = await deriveKey(userEmail, "salt");
+								await saveMasterKey(masterKey);
+								// Bağlantı durumunu güvenli storage'a kaydet
+								await saveGoogleAuthState(accessToken, userEmail);
 							} catch (e) {
 								$('#who').textContent = 'Bağlı';
 								$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
 								log("✅ Google Drive'a başarıyla bağlandı");
-								// Bağlantı durumunu localStorage'a kaydet
-								saveGoogleAuthState(accessToken, '');
+								// Master key'i türet ve sakla (email yok)
+								masterKey = await deriveKey("demo", "salt");
+								await saveMasterKey(masterKey);
+								// Bağlantı durumunu güvenli storage'a kaydet
+								await saveGoogleAuthState(accessToken, '');
 							}
 							ensureFolder();
 						}
@@ -1162,87 +1538,6 @@
 				} catch (e) {
 					log("❌ Bağlanma hatası: " + e.message, "error");
 				}
-			};
-
-			async function initGapi() {
-				try {
-					// gapi'nin yüklenmesini bekle
-					await new Promise(resolve => {
-						if (typeof gapi !== 'undefined') {
-							resolve();
-						} else {
-							const checkGapi = () => {
-								if (typeof gapi !== 'undefined') {
-									resolve();
-								} else {
-									setTimeout(checkGapi, 100);
-								}
-							};
-							checkGapi();
-						}
-					});
-					await new Promise(res => gapi.load('client', res));
-					await gapi.client.init({
-						discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
-					});
-					log("✅ Google API başarıyla yüklendi");
-					
-					// Sayfa yüklendiğinde kaydedilmiş bağlantı durumunu kontrol et
-					await restoreGoogleAuth();
-				} catch (e) {
-					log("❌ Google API yükleme hatası: " + e.message, "error");
-				}
-			}
-
-			// Kaydedilmiş Google bağlantısını geri yükle
-			async function restoreGoogleAuth() {
-				const { token, email } = loadGoogleAuthState();
-				if (token) {
-					try {
-						// Token'ın hala geçerli olup olmadığını kontrol et
-						accessToken = token;
-						userEmail = email;
-						gapi.client.setToken({
-							access_token: accessToken
-						});
-						
-						// Token'ı test et
-						const testResponse = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?access_token=' + accessToken);
-						if (testResponse.ok) {
-							$('#who').textContent = email ? `Bağlı: ${email}` : 'Bağlı';
-							$('#googleConnectBtn').textContent = 'Bağlantıyı Kes';
-							log("✅ Google bağlantısı otomatik olarak geri yüklendi");
-							await ensureFolder();
-						} else {
-							// Token geçersiz, temizle
-							clearGoogleAuthState();
-							accessToken = null;
-							userEmail = null;
-							log("⚠️ Kaydedilmiş token geçersiz, temizlendi");
-						}
-					} catch (e) {
-						// Token geçersiz, temizle
-						clearGoogleAuthState();
-						accessToken = null;
-						userEmail = null;
-						log("⚠️ Kaydedilmiş bağlantı geri yüklenemedi: " + e.message);
-					}
-				}
-			}
-			
-			// Sayfa yüklendikten sonra gapi'yi başlat
-			window.addEventListener('load', () => {
-				setTimeout(initGapi, 1000); // 1 saniye bekle
-			});
-
-			$('#saveBtn').onclick = saveNote;
-			$('#syncBtn').onclick = SynchronizeGoogleDrive;
-			$('#newBtn').onclick = () => {
-				currentNoteId = null;
-				$('#title').value = "";
-				quill.setContents({
-					ops: []
-				});
 			};
       
 			refreshList();
