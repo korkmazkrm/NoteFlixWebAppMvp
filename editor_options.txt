@@ -1,0 +1,32 @@
+bold (OK)
+italic (OK)
+underline
+strikethrough (OK)
+code
+subscript
+superscript
+background color (OK)
+text color (OK)
+math(inline)
+font size
+paragraph/Heading
+font
+checklist
+numbered list(123,ABC,abc,I II III, i ii iii)
+bullet list
+link
+alignment
+text direction
+clear all formatting
+++++++++++++++++++
+task list
+outline list
+hotizontal rule
+code block
+Math&Formulas
+Callout (abstract, hint,info, success, warn, error, example, quote)
+Quote
+Image (upload from diski attach image from url)
+Attachment
+Embed
+Table
