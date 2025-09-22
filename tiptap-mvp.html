@@ -33,10 +33,18 @@
 
     /* Editor */
     .ProseMirror {
-      border: 1px solid var(--bd); border-radius: var(--br);
-      min-height: 260px; padding: 14px; outline: none;
+      min-height: 260px; outline: none;
     }
     .ProseMirror p { margin: 8px 0; }
+    
+    /* Placeholder styles */
+    .ProseMirror p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      float: left;
+      color: #a0aec0;
+      pointer-events: none;
+      height: 0;
+    }
     
     /* Blockquote styling */
     .ProseMirror blockquote {
@@ -125,7 +133,7 @@
 
     /* Title section */
     #title-section {
-      margin: 20px 0;
+      margin: 0;
     }
     #note-title {
       width: 100%;
@@ -136,14 +144,9 @@
       color: #2d3748;
       background: transparent;
       padding: 10px 0;
-      border-bottom: 2px solid transparent;
-      transition: border-color 0.2s ease;
-    }
-    #note-title:focus {
-      border-bottom-color: var(--bd);
     }
     #note-title::placeholder {
-      color: #a0aec0;
+      color: #718096;
       font-weight: 400;
     }
   </style>
@@ -273,17 +276,34 @@
     </div>
   </div>
 
+  <script type="importmap">
+    {
+      "imports": {
+        "@tiptap/core": "https://esm.sh/@tiptap/core@2.1.13",
+        "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.1.13",
+        "@tiptap/extension-task-list": "https://esm.sh/@tiptap/extension-task-list@2.1.13",
+        "@tiptap/extension-task-item": "https://esm.sh/@tiptap/extension-task-item@2.1.13",
+        "@tiptap/extension-text-style": "https://esm.sh/@tiptap/extension-text-style@2.1.13",
+        "@tiptap/extension-color": "https://esm.sh/@tiptap/extension-color@2.1.13",
+        "@tiptap/extension-highlight": "https://esm.sh/@tiptap/extension-highlight@2.1.13",
+        "@tiptap/extension-subscript": "https://esm.sh/@tiptap/extension-subscript@2.1.13",
+        "@tiptap/extension-superscript": "https://esm.sh/@tiptap/extension-superscript@2.1.13",
+        "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.1.13"
+      }
+    }
+  </script>
   <script type="module">
     /* ---------- Imports ---------- */
-    import { Editor, Extension } from "https://cdn.skypack.dev/@tiptap/core";
-    import StarterKit from "https://cdn.skypack.dev/@tiptap/starter-kit";
-    import TaskList from "https://cdn.skypack.dev/@tiptap/extension-task-list";
-    import TaskItem from "https://cdn.skypack.dev/@tiptap/extension-task-item";
-    import { TextStyle } from "https://cdn.skypack.dev/@tiptap/extension-text-style";
-    import Color from "https://cdn.skypack.dev/@tiptap/extension-color";
-    import Highlight from "https://cdn.skypack.dev/@tiptap/extension-highlight";
-    import Subscript from "https://cdn.skypack.dev/@tiptap/extension-subscript";
-    import Superscript from "https://cdn.skypack.dev/@tiptap/extension-superscript";
+    import { Editor, Extension } from "@tiptap/core";
+    import StarterKit from "@tiptap/starter-kit";
+    import TaskList from "@tiptap/extension-task-list";
+    import TaskItem from "@tiptap/extension-task-item";
+    import { TextStyle } from "@tiptap/extension-text-style";
+    import Color from "@tiptap/extension-color";
+    import Highlight from "@tiptap/extension-highlight";
+    import Subscript from "@tiptap/extension-subscript";
+    import Superscript from "@tiptap/extension-superscript";
+    import Placeholder from "@tiptap/extension-placeholder";
     import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.es.js";
 
     /* ---------- Custom Right Blockquote Extension ---------- */
@@ -366,14 +386,23 @@
         FontAttrs, // fontSize & fontFamily on textStyle
         Subscript,
         Superscript,
+        Placeholder.configure({
+          placeholder: 'Start writing your note...',
+        }),
         RightBlockquote, // custom right blockquote
       ],
-      content: `<p>Merhaba <b>Noteflix</b>! Buraya dışarıdan metin yapıştırabilirsin.</p>`,
+      content: '',
       editorProps: {
+        attributes: {
+          'data-placeholder': 'Start writing your note...',
+        },
         handlePaste(view, event) {
           const html = event.clipboardData?.getData('text/html');
           const text = event.clipboardData?.getData('text/plain');
           if (!html && !text) { return false; }
+          
+          // Sadece paste event'ini yakala
+          if (event.type !== 'paste') { return false; }
 
           event.preventDefault();
 
@@ -601,6 +630,14 @@
     // ESC → kapat
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { closeAllPopups(); }
+    });
+
+    /* ---------- Title navigation ---------- */
+    $('note-title').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        editor.commands.focus();
+      }
     });
   </script>
 </body>
