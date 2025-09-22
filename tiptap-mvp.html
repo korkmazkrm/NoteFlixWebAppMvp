@@ -98,6 +98,7 @@
     ul[data-type="taskList"] li > label > div { display: inline-block; }
     ul[data-type="taskList"] li[data-checked="true"] > label > div { text-decoration: line-through; color: #666; }
 
+
     /* Popups */
     .popup {
       position: absolute; background: #fff; border: 1px solid var(--bd); border-radius: var(--br);
@@ -169,6 +170,9 @@
     <!-- lists -->
     <button id="list-btn" title="Lists"><i class="bi bi-list"></i></button>
 
+    <!-- alignment -->
+    <button id="align-btn" title="Text Alignment"><i class="bi bi-text-left"></i></button>
+
     <!-- colors -->
     <button id="palette-btn" title="Colors"><i class="bi bi-palette"></i></button>
 
@@ -226,6 +230,14 @@
     <button data-action="bullet" title="Bulleted"><i class="bi bi-list-ul"></i></button>
     <button data-action="ordered" title="Numbered"><i class="bi bi-list-ol"></i></button>
     <button data-action="task" title="Task"><i class="bi bi-list-task"></i></button>
+  </div>
+
+  <!-- Alignment popup -->
+  <div id="align-popup" class="popup d-none">
+    <button data-align="left" title="Align Left"><i class="bi bi-text-left"></i></button>
+    <button data-align="center" title="Align Center"><i class="bi bi-text-center"></i></button>
+    <button data-align="right" title="Align Right"><i class="bi bi-text-right"></i></button>
+    <button data-align="justify" title="Justify"><i class="bi bi-justify"></i></button>
   </div>
 
   <!-- Palette selector -->
@@ -288,7 +300,8 @@
         "@tiptap/extension-highlight": "https://esm.sh/@tiptap/extension-highlight@2.1.13",
         "@tiptap/extension-subscript": "https://esm.sh/@tiptap/extension-subscript@2.1.13",
         "@tiptap/extension-superscript": "https://esm.sh/@tiptap/extension-superscript@2.1.13",
-        "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.1.13"
+        "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.1.13",
+        "@tiptap/extension-text-align": "https://esm.sh/@tiptap/extension-text-align@2.1.13"
       }
     }
   </script>
@@ -304,6 +317,7 @@
     import Subscript from "@tiptap/extension-subscript";
     import Superscript from "@tiptap/extension-superscript";
     import Placeholder from "@tiptap/extension-placeholder";
+    import TextAlign from "@tiptap/extension-text-align";
     import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.es.js";
 
     /* ---------- Custom Right Blockquote Extension ---------- */
@@ -389,6 +403,9 @@
         Placeholder.configure({
           placeholder: 'Start writing your note...',
         }),
+        TextAlign.configure({
+          types: ['heading', 'paragraph'],
+        }),
         RightBlockquote, // custom right blockquote
       ],
       content: '',
@@ -444,10 +461,12 @@
     const $ = id => document.getElementById(id);
     const headingBtn = $('heading-btn');
     const listBtn = $('list-btn');
+    const alignBtn = $('align-btn');
     const paletteBtn = $('palette-btn');
     const headingPopup = $('heading-popup');
     const blockquotePopup = $('blockquote-popup');
     const listPopup = $('list-popup');
+    const alignPopup = $('align-popup');
     const palettePopup = $('palette-popup');
     const textPopup = $('text-popup');
     const bgPopup = $('bg-popup');
@@ -459,7 +478,7 @@
       popup.style.left = rect.left + window.scrollX + 'px';
     }
     function closeAllPopups() {
-      [headingPopup, blockquotePopup, listPopup, palettePopup, textPopup, bgPopup].forEach(closePopup);
+      [headingPopup, blockquotePopup, listPopup, alignPopup, palettePopup, textPopup, bgPopup].forEach(closePopup);
     }
 
     /* ---------- Toolbar actions ---------- */
@@ -556,7 +575,7 @@
     /* ---------- List popup ---------- */
     listBtn.onclick = (e) => {
       e.stopPropagation();
-      [headingPopup, blockquotePopup, palettePopup, textPopup, bgPopup].forEach(closePopup);
+      [headingPopup, blockquotePopup, alignPopup, palettePopup, textPopup, bgPopup].forEach(closePopup);
       const isOpen = !listPopup.classList.contains('d-none');
       if (isOpen) { closePopup(listPopup); }
       else { positionPopupAt(listPopup, listBtn.getBoundingClientRect()); openPopup(listPopup); }
@@ -564,10 +583,48 @@
     listPopup.querySelectorAll('button').forEach(btn => {
       btn.onclick = () => {
         const a = btn.dataset.action;
-        if (a === 'bullet') { editor.chain().focus().toggleBulletList().run(); }
-        if (a === 'ordered') { editor.chain().focus().toggleOrderedList().run(); }
-        if (a === 'task') { editor.chain().focus().toggleTaskList().run(); }
-        closePopup(listPopup);
+        if (a === 'bullet') { 
+          editor.chain().focus().toggleBulletList().run(); 
+          closePopup(listPopup);
+        }
+        if (a === 'ordered') { 
+          editor.chain().focus().toggleOrderedList().run(); 
+          closePopup(listPopup);
+        }
+        if (a === 'task') { 
+          editor.chain().focus().toggleTaskList().run(); 
+          closePopup(listPopup);
+        }
+      };
+    });
+
+    /* ---------- Alignment popup ---------- */
+    alignBtn.onclick = (e) => {
+      e.stopPropagation();
+      [headingPopup, blockquotePopup, listPopup, palettePopup, textPopup, bgPopup].forEach(closePopup);
+      const isOpen = !alignPopup.classList.contains('d-none');
+      if (isOpen) { closePopup(alignPopup); }
+      else { positionPopupAt(alignPopup, alignBtn.getBoundingClientRect()); openPopup(alignPopup); }
+    };
+    alignPopup.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        const align = btn.dataset.align;
+        if (align === 'left') { 
+          editor.chain().focus().setTextAlign('left').run(); 
+          closePopup(alignPopup);
+        }
+        if (align === 'center') { 
+          editor.chain().focus().setTextAlign('center').run(); 
+          closePopup(alignPopup);
+        }
+        if (align === 'right') { 
+          editor.chain().focus().setTextAlign('right').run(); 
+          closePopup(alignPopup);
+        }
+        if (align === 'justify') { 
+          editor.chain().focus().setTextAlign('justify').run(); 
+          closePopup(alignPopup);
+        }
       };
     });
 
@@ -623,7 +680,7 @@
     /* ---------- Kapanış davranışları ---------- */
     // Dışarı tıkla → kapat
     document.addEventListener('click', (e) => {
-      [headingPopup, blockquotePopup, listPopup, palettePopup, textPopup, bgPopup].forEach(p => {
+      [headingPopup, blockquotePopup, listPopup, alignPopup, palettePopup, textPopup, bgPopup].forEach(p => {
         if (!p.classList.contains('d-none') && !p.contains(e.target)) { closePopup(p); }
       });
     });
