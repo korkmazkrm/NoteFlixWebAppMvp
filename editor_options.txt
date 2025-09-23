@@ -1,23 +1,23 @@
 bold (OK)
 italic (OK)
-underline
+underline (OK)
 strikethrough (OK)
-code
-subscript
-superscript
+code (OK)
+subscript (OK)
+superscript (OK)
 background color (OK)
 text color (OK)
 math(inline)
-font size
-paragraph/Heading
-font
+font size (OK)
+paragraph/Heading (OK)
+font (OK)
 checklist
 numbered list(123,ABC,abc,I II III, i ii iii)
-bullet list
-link
-alignment
+bullet list (OK)
+link (OK)
+alignment (OK)
 text direction
-clear all formatting
+clear all formatting (OK)
 ++++++++++++++++++
 task list
 outline list
@@ -26,7 +26,7 @@ code block
 Math&Formulas
 Callout (abstract, hint,info, success, warn, error, example, quote)
 Quote
-Image (upload from diski attach image from url)
+Image (upload from diski attach image from url) (OK)
 Attachment
 Embed
 Table
