@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Modal — SimpleDTP (Date + Time)</title>
+
+  <link rel="stylesheet" href="simple-dtp.css">
+
+  <style>
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; margin:0; padding:2rem; }
+    .trigger {
+      background: var(--sdtp-accent);
+      color: #fff;
+      border: 0;
+      padding: .6rem 1rem;
+      border-radius: .6rem;
+      cursor: pointer;
+    }
+    .trigger:hover { filter: brightness(0.95); }
+  </style>
+</head>
+<body>
+
+  <button id="openBtn" class="trigger">Tarih ve Saat Seç</button>
+
+  <script src="simple-dtp.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const dp = SimpleDTP.create({
+        attachTo: '#openBtn',
+		title: 'Hedef Tarih', 	     // ← başlık
+	    locale: 'en',
+	    // Sadece ay/dow isimlerini özelleştir:
+        //months: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+        //dowsShortSunFirst: ['Su','Mo','Tu','We','Th','Fr','Sa'],
+		showHeader: true,            // (varsayılan: true)
+        enableTime: true,            // SAAT/DK aktif
+        minuteStep: 5,               // 5'er dk art/azalt
+        time24hr: true,              // 24 saat görünümü
+        format: 'dd.MM.yyyy HH:mm',  // çıktı formatı
+        showToday: true,
+        showCancel: true,
+        closeOnOverlayClick: true,
+        onConfirm: (date, str) => {
+          alert('Seçilen: ' + str);  // Örnek: 15.09.2025 13:05
+        }
+      });
+
+      // Başlangıç değeri set etmek istersen:
+      // dp.setDate(new Date(2025, 8, 15, 13, 5)); // 15 Eyl 2025 13:05
+    });
+  </script>
+</body>
+</html>
