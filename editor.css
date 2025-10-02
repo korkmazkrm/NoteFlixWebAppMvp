@@ -195,6 +195,7 @@ ul[data-type="taskList"] li[data-checked="true"] > label > div { text-decoration
 }
 .popup.d-flex { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; display: flex !important; gap: 6px; padding:12px; }
 .d-none { display: none !important; }
+.d-flex { display: flex !important; }
 
 .popup button {
   width: 32px; height: 32px; border: 1px solid var(--border-color-light); border-radius: 8px;

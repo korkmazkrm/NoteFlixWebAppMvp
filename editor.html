@@ -765,19 +765,21 @@
 			</div>
 	</div>
 	<!-- Parent Note Selection Modal -->
-	<div id="parent-note-modal" class="sdtp-overlay" style="display: none;">
-		<div class="sdtp-modal parent-note-modal">
-			<div class="parent-note-header">
+	<div id="parent-note-modal" class="modal-overlay d-none">
+		<div class="modal-content parent-note-modal">
+			<div class="modal-header">
 				<h3>Üst Not Seç</h3>
-				<button class="parent-note-close" id="close-parent-note-modal">
+				<button class="modal-close" id="close-parent-note-modal">
 					<i class="bi bi-x"></i>
 				</button>
 			</div>
-			<div class="parent-note-search">
-				<input type="text" id="parent-note-search-input" placeholder="Not ara..." />
-			</div>
-			<div class="parent-note-list" id="parent-note-list">
-				<!-- Not listesi dinamik olarak yüklenecek -->
+			<div class="modal-body">
+				<div class="parent-note-search">
+					<input type="text" id="parent-note-search-input" placeholder="Not ara..." />
+				</div>
+				<div class="parent-note-list" id="parent-note-list">
+					<!-- Not listesi dinamik olarak yüklenecek -->
+				</div>
 			</div>
 		</div>
 	</div>

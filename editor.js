@@ -324,7 +324,6 @@ function positionPopupAt(popup, rect, bottomLeft=null) {
 	let margin = 5;
     let top = (bottomLeft == true) ? (rect.top + window.scrollY - margin) : (rect.bottom + window.scrollY + margin);
     let left = rect.left + window.scrollX;
-	console.log('top/left : ' + top + '/' + left);
   	popup.style.top = top + 'px';
 	popup.style.left = left + 'px';
 }
@@ -333,16 +332,51 @@ function closeAllPopups() {
   [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,sortOptionsPopup].forEach(closePopup);
 }
 
+function closeAllPopupsAndModals(excludeId) {
+  // Close all popups except the excluded one
+  const allPopups = [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,sortOptionsPopup];
+  
+  allPopups.forEach(popup => {
+    if (popup && popup.id !== excludeId) {
+      closePopup(popup);
+    }
+  });
+  
+  // Close modals except the excluded one
+  const parentNoteModal = document.getElementById('parent-note-modal');
+  const commentsModal = document.getElementById('comments-modal');
+  
+  if (parentNoteModal && parentNoteModal.id !== excludeId) {
+    closeParentNoteModal();
+  }
+  
+  if (commentsModal && commentsModal.id !== excludeId) {
+    closeCommentsModalFunc();
+  }
+}
+
 /* ---------- Toolbar actions ---------- */
-$('bold-btn').onclick = () => { editor.chain().focus().toggleBold().run(); };
-$('italic-btn').onclick = () => { editor.chain().focus().toggleItalic().run(); };
-$('underline-btn').onclick = () => { editor.chain().focus().toggleUnderline().run(); };
-$('strike-btn').onclick = () => { editor.chain().focus().toggleStrike().run(); };
+$('bold-btn').onclick = () => { 
+  closeAllPopups(); 
+  editor.chain().focus().toggleBold().run(); 
+};
+$('italic-btn').onclick = () => { 
+  closeAllPopups(); 
+  editor.chain().focus().toggleItalic().run(); 
+};
+$('underline-btn').onclick = () => { 
+  closeAllPopups(); 
+  editor.chain().focus().toggleUnderline().run(); 
+};
+$('strike-btn').onclick = () => { 
+  closeAllPopups(); 
+  editor.chain().focus().toggleStrike().run(); 
+};
 
 /* ---------- Actions popup ---------- */
 $('actions-btn').onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('actions-popup');
   const isOpen = !actionsPopup.classList.contains('d-none');
   if (isOpen) { closePopup(actionsPopup); }
   else { positionPopupAt(actionsPopup, actionsBtn.getBoundingClientRect());openPopup(actionsPopup); }
@@ -397,7 +431,7 @@ $('hr-btn').onclick = () => {
 /* ---------- URL popup ---------- */
 $('url-btn').onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('url-popup');
   const isOpen = !urlPopup.classList.contains('d-none');
   if (isOpen) { 
     closePopup(urlPopup); 
@@ -461,7 +495,7 @@ $('link-url').addEventListener('input', (e) => {
 /* ---------- Video popup ---------- */
 $('video-btn').onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('video-popup');
   const isOpen = !videoPopup.classList.contains('d-none');
   if (isOpen) { 
     closePopup(videoPopup); 
@@ -530,7 +564,7 @@ $('video-url').addEventListener('input', (e) => {
 /* ---------- Image popup ---------- */
 $('image-btn').onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('image-popup');
   const isOpen = !imagePopup.classList.contains('d-none');
   if (isOpen) { closePopup(imagePopup); } 
   else { $('image-file').value = '';positionPopupAt(imagePopup, imageBtn.getBoundingClientRect()); openPopup(imagePopup); }
@@ -631,7 +665,7 @@ editor.on('selectionUpdate', () => {
 /* ---------- Heading popup ---------- */
 headingBtn.onclick = (e) => {
   e.stopPropagation();
-  [listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('heading-popup');
   const isOpen = !headingPopup.classList.contains('d-none');
   if (isOpen) { closePopup(headingPopup); }
   else { positionPopupAt(headingPopup, headingBtn.getBoundingClientRect());openPopup(headingPopup); }
@@ -640,7 +674,6 @@ headingBtn.onclick = (e) => {
 headingPopup.querySelectorAll('button').forEach(btn => {
   btn.onclick = () => {
     const level = parseInt(btn.dataset.level);
-    console.log('heading level: ' + level);
     editor.chain().focus().toggleHeading({ level }).run();
     closePopup(headingPopup);
   };
@@ -649,7 +682,7 @@ headingPopup.querySelectorAll('button').forEach(btn => {
 /* ---------- List popup ---------- */
 listBtn.onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('list-popup');
   const isOpen = !listPopup.classList.contains('d-none');
   if (isOpen) { closePopup(listPopup); }
   else { positionPopupAt(listPopup, listBtn.getBoundingClientRect());openPopup(listPopup); }
@@ -676,7 +709,7 @@ listPopup.querySelectorAll('button').forEach(btn => {
 /* ---------- Alignment popup ---------- */
 alignBtn.onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('align-popup');
   const isOpen = !alignPopup.classList.contains('d-none');
   if (isOpen) { closePopup(alignPopup); }
   else { positionPopupAt(alignPopup, alignBtn.getBoundingClientRect());openPopup(alignPopup); }
@@ -706,7 +739,7 @@ alignPopup.querySelectorAll('button').forEach(btn => {
 
 /* ---------- Palette selector ---------- */
 paletteBtn.onclick = (e) => {
-  [headingPopup,listPopup,alignPopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,parentNotePopup].forEach(closePopup);
+  closeAllPopupsAndModals('palette-popup');
   const isOpen = !palettePopup.classList.contains('d-none');
   if (isOpen) { closePopup(palettePopup); }
   else { positionPopupAt(palettePopup, paletteBtn.getBoundingClientRect());openPopup(palettePopup); }
@@ -755,7 +788,7 @@ $('bg-clear').onclick = () => {
 /* ---------- List options popup ---------- */
 listOptionsBtn.onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,sortOptionsPopup].forEach(closePopup);
+  closeAllPopupsAndModals('list-options-popup');
   const isOpen = !listOptionsPopup.classList.contains('d-none');
   if (isOpen) { closePopup(listOptionsPopup); }
   else { 
@@ -768,7 +801,7 @@ listOptionsBtn.onclick = (e) => {
 // Sort button click handler
 sortBtn.onclick = (e) => {
   e.stopPropagation();
-  [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup].forEach(closePopup);
+  closeAllPopupsAndModals('sort-options-popup');
   const isOpen = !sortOptionsPopup.classList.contains('d-none');
   if (isOpen) { 
     closePopup(sortOptionsPopup); 
@@ -1022,7 +1055,6 @@ function initDB() {
           if (!store.indexNames.contains('reminderDateTime')) {
             try {
               store.createIndex('reminderDateTime', 'reminderDateTime', { unique: false });
-              console.log('ReminderDateTime index created successfully');
             } catch (error) {
               console.error('Error creating reminderDateTime index:', error);
             }
@@ -2081,7 +2113,7 @@ document.addEventListener('click', function(e) {
   }
   
   // Close popups when clicking outside
-  const popups = [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup];
+  const popups = [headingPopup,listPopup,alignPopup,palettePopup,actionsPopup,urlPopup,videoPopup,imagePopup,textPopup,bgPopup,noteBgPopup,commandPopup,listOptionsPopup,sortOptionsPopup];
  
   popups.forEach(popup => {
     if (popup && !popup.classList.contains('d-none')) {
@@ -2596,7 +2628,6 @@ document.getElementById('dueDateBtn').onclick = () => {
       // Seçilen tarihi global değişkene kaydet
       currentNoteDueDate = date.toISOString();
       updateDueDateDisplay();
-      console.log('Seçilen tarih:', str);
     }
   });
   
@@ -2629,7 +2660,6 @@ document.getElementById('reminderBtn').onclick = () => {
       // Seçilen tarihi global değişkene kaydet
       currentNoteReminderDateTime = date.toISOString();
       updateReminderDisplay();
-      console.log('Seçilen hatırlatıcı tarihi:', str);
     }
   });
   
@@ -2741,7 +2771,7 @@ async function openParentNoteModal() {
   };
   
   // Show modal
-  modal.style.display = 'flex';
+  modal.classList.add('d-flex');
   
   // Focus search input
   setTimeout(() => searchInput.focus(), 100);
@@ -2757,7 +2787,8 @@ async function openParentNoteModal() {
 // Close parent note modal
 function closeParentNoteModal() {
   const modal = document.getElementById('parent-note-modal');
-  modal.style.display = 'none';
+  modal.classList.remove('d-flex');
+  modal.classList.add('d-none');
 }
 
 // Select a parent note
@@ -2981,7 +3012,6 @@ async function checkReminders() {
     
     // Double check if db is ready
     if (!db) {
-      console.log('Database not ready, skipping reminder check');
       return;
     }
     
@@ -3041,7 +3071,6 @@ async function clearNoteReminder(noteId) {
         note.reminderDateTime = null;
         const putRequest = store.put(note);
         putRequest.onsuccess = () => {
-          console.log('Reminder cleared for note:', note.title);
         };
         putRequest.onerror = () => {
           console.error('Error clearing reminder:', putRequest.error);
@@ -3058,11 +3087,9 @@ async function clearNoteReminder(noteId) {
 
 // Function to show reminder notification using Web Notification API
 function showReminderNotification(note) {
-  console.log('showReminderNotification called for note:', note.title);
   
   // Check if notifications are supported
   if (!("Notification" in window)) {
-    console.log("Bu tarayıcı bildirimleri desteklemiyor.");
     showFallbackNotification(note);
     return;
   }
@@ -3076,12 +3103,10 @@ function showReminderNotification(note) {
       if (permission === "granted") {
         showWebNotification(note);
       } else {
-        console.log("Bildirim izni verilmedi, fallback kullanılıyor.");
         showFallbackNotification(note);
       }
     });
   } else {
-    console.log("Bildirimler engellenmiş, fallback kullanılıyor.");
     showFallbackNotification(note);
   }
 }
@@ -3185,7 +3210,6 @@ window.openNoteFromReminder = function(noteId) {
 function requestNotificationPermission() {
   // Check if notifications are supported
   if (!("Notification" in window)) {
-    console.log("Bu tarayıcı bildirimleri desteklemiyor.");
     return;
   }
 
@@ -3193,16 +3217,12 @@ function requestNotificationPermission() {
   if (Notification.permission === "default") {
     Notification.requestPermission().then(permission => {
       if (permission === "granted") {
-        console.log("Bildirim izni verildi!");
         showNotification("Bildirim izni verildi! Hatırlatıcılar artık sistem bildirimi olarak gösterilecek.", "success");
       } else {
-        console.log("Bildirim izni verilmedi. Hatırlatıcılar sayfa içinde gösterilecek.");
       }
     });
   } else if (Notification.permission === "granted") {
-    console.log("Bildirim izni zaten verilmiş.");
   } else {
-    console.log("Bildirim izni engellenmiş.");
   }
 }
 
@@ -3378,7 +3398,6 @@ async function updateParentNoteDisplay() {
 
 // Function to update metadata container visibility
 function updateMetadataContainerVisibility() {
-  console.log('updateMetadataContainerVisibility');
   const container = document.getElementById('note-metadata-container');
   const dueDateDisplay = document.getElementById('due-date-display');
   const reminderDisplay = document.getElementById('reminder-display');
@@ -3386,7 +3405,6 @@ function updateMetadataContainerVisibility() {
   
   // Null kontrolü
   if (!container || !dueDateDisplay || !reminderDisplay || !parentNoteDisplay) {
-    console.log('Container elements not found');
     return;
   }
   
@@ -3394,9 +3412,6 @@ function updateMetadataContainerVisibility() {
   const hasDueDate = dueDateDisplay.style.display !== 'none';
   const hasReminder = reminderDisplay.style.display !== 'none';
   const hasParentNote = parentNoteDisplay.style.display !== 'none';
-  console.log('hasDueDate', hasDueDate);
-  console.log('hasReminder', hasReminder);
-  console.log('hasParentNote', hasParentNote);
   
   if (hasDueDate || hasReminder || hasParentNote) {
     container.style.display = 'flex';
@@ -4266,7 +4281,6 @@ async function updateComment(comment) {
 
 // Open comments modal
 async function openCommentsModal() {
-  console.log('openCommentsModal');
   const modal = document.getElementById('comments-modal');
   if (modal) {
     modal.style.display = 'flex';
