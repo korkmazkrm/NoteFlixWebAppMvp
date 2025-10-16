@@ -1,0 +1,96 @@
+
+:root{
+  --sdtp-bg:#fff; --sdtp-fg:#111; --sdtp-muted:#9aa0a6; --sdtp-accent:#1a73e8; --sdtp-ring:#a8c7fa;
+  --sdtp-overlay:rgba(0,0,0,.45); --sdtp-border:#e5e7eb; --sdtp-icon:#667085;
+
+  /* Tunables for compact look */
+  --sdtp-cal-width: 300px;   /* kalenderin sabit genişliği (Evernote benzeri) */
+  --sdtp-cell-gap: 2px;      /* gün hücreleri arası boşluk */
+  --sdtp-grid-pad: 4px;      /* grid çevresindeki padding */
+  --sdtp-day-pad: 6px;       /* hücre içi dikey boşluk */
+  --sdtp-day-font: 13px;     /* gün rakamı font */
+  --sdtp-dow-font: 11px;     /* Pzt-Sal-... font */
+  --sdtp-box-size: 44px;     /* saat/dakika kare boyut (önceki değişken) */
+}
+
+/* Buttons */
+.sdtp-btn{font:inherit; cursor:pointer; border:0; padding:.55rem .9rem; border-radius:.6rem; background:var(--sdtp-accent); color:#fff}
+.sdtp-btn:disabled{opacity:.6; cursor:default}
+.sdtp-btn.secondary{background:#e5e7eb; color:#111}
+.sdtp-nav{background:transparent; border:0; font-size:22px; line-height:1; padding:.25rem .5rem; cursor:pointer; border-radius:8px}
+.sdtp-nav:hover{background:#f2f4f7}
+
+/* Overlay modal */
+.sdtp-overlay{position:fixed; inset:0; background:var(--sdtp-overlay); display:none; justify-content:center; align-items:center; z-index:9999}
+.sdtp-overlay.sdtp-open{display:flex}
+.sdtp-modal{background:var(--sdtp-bg); color:var(--sdtp-fg); width:fit-content; max-width:92vw; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); padding:12px; animation: modalSlideIn 0.3s ease-out;}
+.sdtp-modal header{display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:.5rem}
+.sdtp-title{font-weight:600; font-size:18px; margin:0 auto; text-align:center}
+
+/* Layout */
+.sdtp-main{display:flex; gap:16px; align-items:flex-start}
+.sdtp-cal{user-select:none; flex:0 0 var(--sdtp-cal-width); width:var(--sdtp-cal-width);}
+.sdtp-cal-top{display:flex; align-items:center; justify-content:space-between; padding:.25rem .25rem .35rem}
+.sdtp-month{font-weight:600}
+
+/* Grid */
+.sdtp-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:var(--sdtp-cell-gap); padding:var(--sdtp-grid-pad)}
+.sdtp-dow{text-align:center; font-size:var(--sdtp-dow-font); color:var(--sdtp-muted); padding:6px 0}
+.sdtp-day{position:relative; text-align:center; padding:var(--sdtp-day-pad) 0; border-radius:10px; cursor:pointer; outline:none; font-size:var(--sdtp-day-font)}
+.sdtp-day:hover:not(.sdtp-muted):not(.sdtp-disabled){background:#f2f7ff}
+.sdtp-day.sdtp-muted{color:var(--sdtp-muted)}
+.sdtp-day.sdtp-disabled{opacity:.4; cursor:not-allowed}
+.sdtp-day.sdtp-today{box-shadow:0 0 0 2px var(--sdtp-ring) inset; border-radius:12px}
+.sdtp-day.sdtp-selected{background:var(--sdtp-accent); color:#fff;}
+
+.sdtp-footer{display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding-top:.75rem}
+.sdtp-footer .right{display:flex; gap:.5rem}
+
+/* Time panel (unchanged except variable reuse) */
+.sdtp-time{flex:0 0 auto; display:flex; gap:12px; align-items:center; padding:6px 10px; border-left:1px solid var(--sdtp-border)}
+.sdtp-spin{display:flex; flex-direction:column; align-items:center; gap:6px}
+.sdtp-spin .sdtp-up, .sdtp-spin .sdtp-down{
+  width:30px; height:22px;
+  border-radius:10px; border:1px solid var(--sdtp-border);
+  background: linear-gradient(#fff, #fafafa);
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+  cursor:pointer; position:relative;
+  font-size:0; line-height:0; color:transparent;
+}
+.sdtp-spin .sdtp-up::before, .sdtp-spin .sdtp-down::before{
+  content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:0; height:0;
+  border-left:6px solid transparent; border-right:6px solid transparent;
+}
+.sdtp-spin .sdtp-up::before{ border-bottom:7px solid var(--sdtp-icon); }
+.sdtp-spin .sdtp-down::before{ border-top:7px solid var(--sdtp-icon); }
+.sdtp-spin .sdtp-up:hover, .sdtp-spin .sdtp-down:hover{ background:#f7f8fa; }
+.sdtp-spin .sdtp-up:active, .sdtp-spin .sdtp-down:active{ box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+.sdtp-spin .sdtp-up:focus-visible, .sdtp-spin .sdtp-down:focus-visible{ outline:2px solid var(--sdtp-ring); outline-offset:2px; }
+
+/* Square hour/minute boxes */
+.sdtp-box{
+  width:var(--sdtp-box-size);
+  height:var(--sdtp-box-size);
+  border:1px solid var(--sdtp-border); border-radius:10px;
+  display:flex; align-items:center; justify-content:center; font-weight:600; font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+  background:#fff;
+}
+
+.sdtp-colon{font-weight:600; padding:0 2px}
+
+/* Inline */
+.sdtp-inline{background:var(--sdtp-bg); color:var(--sdtp-fg); border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.12); padding:12px; max-width:560px}
+
+/* Modal animation */
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}

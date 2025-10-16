@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <title>NoteFlix – Master/Recovery Key + Logout</title>
+    <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 20px;
+        background: #111;
+        color: #eee;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      #editor {
+        height: 200px;
+        background: #fff;
+        color: #000;
+      }
+
+      input,
+      button {
+        padding: 6px;
+        margin: 4px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 10px;
+        background: #222;
+      }
+
+      td,
+      th {
+        border: 1px solid #444;
+        padding: 6px;
+      }
+
+      #recoveryBox {
+        background: #222;
+        padding: 10px;
+        margin-top: 10px;
+        border: 1px solid #555;
+      }
+
+      #generatedKey {
+        width: 100%;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="login">
+      <h2>Login</h2><label><input type="checkbox" id="useRecovery"> Recovery Key ile giriş</label><br><input id="username" placeholder="Kullanıcı adı"><br><input id="password" type="password" placeholder="Parola veya Recovery Key"><br><button id="loginBtn">Login</button>
+      <div id="recoveryBox" class="hidden">
+        <p>🔑 Recovery Key'inizi güvenli bir yerde saklayın (bir daha gösterilmeyecek):</p><input id="generatedKey" readonly>
+      </div>
+    </div>
+    <div id="app" style="display:none">
+      <h2>NoteFlix – Secure Notes</h2><button id="logoutBtn">Logout</button><br><br><input id="title" placeholder="Başlık"><br>
+      <div id="toolbar"><button class="ql-bold"></button><button class="ql-italic"></button><button class="ql-underline"></button></div>
+      <div id="editor"></div><button id="saveBtn">Kaydet</button>
+      <h3>Notlar</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Başlık</th>
+            <th>Tarih</th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="notesTable"></tbody>
+      </table>
+    </div>
+    <script>
+      // Dexie DB
+      const db = new Dexie("noteflix");
+      db.version(1).stores({
+        notes: "id,title,updatedAt"
+      });
+      let quill, currentUser = null,
+        masterKey = null;
+      // ==== Crypto helpers ====
+      async function generateMasterKey() {
+        return crypto.subtle.generateKey({
+          name: "AES-GCM",
+          length: 256
+        }, true, ["encrypt", "decrypt"]);
+      }
+      
+	  async function deriveKeyFromPassword(password) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), {
+          name: "PBKDF2"
+        }, false, ["deriveKey"]);
+        return crypto.subtle.deriveKey({
+          name: "PBKDF2",
+          salt: enc.encode("noteflix-salt"),
+          iterations: 100000,
+          hash: "SHA-256"
+        }, keyMaterial, {
+          name: "AES-GCM",
+          length: 256
+        }, false, ["encrypt", "decrypt"]);
+      }
+
+      function generateRecoveryKey() {
+        const arr = new Uint8Array(32);
+        crypto.getRandomValues(arr);
+        return Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
+      }
+      
+	  async function exportKey(key) {
+        const raw = await crypto.subtle.exportKey("raw", key);
+        return new Uint8Array(raw);
+      }
+      
+	  async function importKey(raw) {
+        return crypto.subtle.importKey("raw", raw, {
+          name: "AES-GCM"
+        }, true, ["encrypt", "decrypt"]);
+      }
+      
+	  async function encryptWithKey(key, raw) {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const cipher = await crypto.subtle.encrypt({
+          name: "AES-GCM",
+          iv
+        }, key, raw);
+        return {
+          iv: Array.from(iv),
+          cipher: Array.from(new Uint8Array(cipher))
+        };
+      }
+      
+	  async function decryptWithKey(key, env) {
+        const plain = await crypto.subtle.decrypt({
+          name: "AES-GCM",
+          iv: new Uint8Array(env.iv)
+        }, key, new Uint8Array(env.cipher));
+        return new Uint8Array(plain);
+      }
+      
+	  async function encryptJSON(key, obj) {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const data = new TextEncoder().encode(JSON.stringify(obj));
+        const cipher = await crypto.subtle.encrypt({
+          name: "AES-GCM",
+          iv
+        }, key, data);
+        return {
+          iv: Array.from(iv),
+          cipher: Array.from(new Uint8Array(cipher))
+        };
+      }
+      
+	  async function decryptJSON(key, iv, cipher) {
+        const data = await crypto.subtle.decrypt({
+          name: "AES-GCM",
+          iv: new Uint8Array(iv)
+        }, key, new Uint8Array(cipher));
+        return JSON.parse(new TextDecoder().decode(data));
+      }
+      // ==== OPFS helpers ====
+      async function opfsRoot() {
+        return navigator.storage.getDirectory();
+      }
+      
+	  async function opfsWrite(name, content) {
+        const r = await opfsRoot();
+        const h = await r.getFileHandle(name, {
+          create: true
+        });
+        const w = await h.createWritable();
+        await w.write(content);
+        await w.close();
+      }
+      
+	  async function opfsRead(name) {
+        try {
+          const r = await opfsRoot();
+          const h = await r.getFileHandle(name);
+          const f = await h.getFile();
+          return f.text();
+        } catch {
+          return null;
+        }
+      }
+      // ==== Editor UI ====
+      function initEditor() {
+        quill = new Quill("#editor", {
+          theme: "snow",
+          modules: {
+            toolbar: "#toolbar"
+          }
+        });
+      }
+      
+	  async function refreshList() {
+        const notes = await db.notes.orderBy("updatedAt").reverse().toArray();
+        const tb = document.getElementById("notesTable");
+        tb.innerHTML = "";
+        notes.forEach(n => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${n.title}</td><td>${n.updatedAt}</td><td><button onclick="loadNote('${n.id}')">Yükle</button></td>`;
+          tb.appendChild(tr);
+        });
+      }
+      
+	  async function saveNote() {
+        const id = "n_" + Date.now();
+        const title = document.getElementById("title").value;
+        const delta = quill.getContents();
+        const obj = {
+          id,
+          title,
+          updatedAt: new Date().toISOString(),
+          content: delta
+        };
+        const env = await encryptJSON(masterKey, obj);
+        await opfsWrite(id + ".json", JSON.stringify(env));
+        await db.notes.put({
+          id,
+          title,
+          updatedAt: obj.updatedAt
+        });
+        refreshList();
+      }
+      
+	  async function loadNote(id) {
+        const txt = await opfsRead(id + ".json");
+        if (!txt) return;
+        const env = JSON.parse(txt);
+        const note = await decryptJSON(masterKey, env.iv, env.cipher);
+        document.getElementById("title").value = note.title;
+        quill.setContents(note.content);
+      }
+      document.getElementById("saveBtn").onclick = saveNote;
+      
+	  // ==== Login ====
+      document.getElementById("loginBtn").onclick = async () => {
+        const user = document.getElementById("username").value.trim();
+        const pass = document.getElementById("password").value.trim();
+        const useRecovery = document.getElementById("useRecovery").checked;
+        if (!user || !pass) {
+          alert("Eksik bilgi");
+          return;
+        }
+        currentUser = user;
+        let userData = localStorage.getItem("user_" + user);
+        if (!userData) {
+          // İlk giriş
+          masterKey = await generateMasterKey();
+          const masterRaw = await exportKey(masterKey);
+          const recoveryStr = generateRecoveryKey();
+          document.getElementById("generatedKey").value = recoveryStr;
+          document.getElementById("recoveryBox").classList.remove("hidden");
+          const passwordKey = await deriveKeyFromPassword(pass);
+          const recovKey = await deriveKeyFromPassword(recoveryStr);
+          const encWithPassword = await encryptWithKey(passwordKey, masterRaw);
+          const encWithRecovery = await encryptWithKey(recovKey, masterRaw);
+          userData = {
+            encWithPassword,
+            encWithRecovery
+          };
+          localStorage.setItem("user_" + user, JSON.stringify(userData));
+        } else {
+          // Sonraki girişler
+          userData = JSON.parse(userData);
+          if (useRecovery) {
+            const recovKey = await deriveKeyFromPassword(pass);
+            const masterRaw = await decryptWithKey(recovKey, userData.encWithRecovery);
+            masterKey = await importKey(masterRaw);
+          } else {
+            const passwordKey = await deriveKeyFromPassword(pass);
+            const masterRaw = await decryptWithKey(passwordKey, userData.encWithPassword);
+            masterKey = await importKey(masterRaw);
+          }
+          document.getElementById("recoveryBox").classList.add("hidden");
+        }
+        document.getElementById("login").style.display = "none";
+        document.getElementById("app").style.display = "block";
+        initEditor();
+        refreshList();
+      };
+      
+	  // ==== Logout ====
+      document.getElementById("logoutBtn").onclick = () => {
+        masterKey = null;
+        currentUser = null;
+        if (quill) {
+          quill.setContents({
+            ops: []
+          });
+        }
+        document.getElementById("title").value = "";
+        document.getElementById("app").style.display = "none";
+        document.getElementById("login").style.display = "block";
+        alert("Çıkış yapıldı. Master key RAM’den temizlendi.");
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Notion-like DB • Modüler Yapı</title>
+<link rel="stylesheet" href="style.css" />
+	</head>
+<body>
+	<header>
+		<h1>📘 Şema Tabanlı Notion-like Database</h1>
+		<div class="toolbar">
+			<button id="btnNewSchema">Yeni Şema</button>
+			<button id="btnExportSchemas">Şemaları Dışa Aktar</button>
+			<label for="fileImportSchemas" class="file-label">Şema İçe Aktar</label>
+			<input id="fileImportSchemas" type="file" accept="application/json" style="display:none" />
+		</div>
+	</header>
+
+
+	<main>
+		<section id="schemas">
+			<h2>Şemalar</h2>
+			<p class="muted">Listeden bir şema seçip <b>Kayıt Oluştur</b> ile formu aç. <b>Düzenle</b> ile şemayı değiştir, <b>Sil</b> ile yalnız şemayı veya bağlı kayıtlarla birlikte kaldır.</p>
+			<table id="schemaTable">
+				<thead><tr><th>Şema Adı</th><th>Property Sayısı</th><th>Özet</th><th>İşlemler</th></tr></thead>
+				<tbody></tbody>
+			</table>
+		</section>
+		<section id="records">
+			<h2>Kayıtlar</h2>
+			<table id="recordTable">
+				<thead><tr><th>Şema</th><th>Veri</th><th>Oluşturma</th></tr></thead>
+				<tbody></tbody>
+			</table>
+		</section>
+	</main>
+
+
+	<!-- ŞEMA MODALI (YENİ / DÜZENLE) -->
+	<div id="schemaModal" class="modal">
+		<div class="modal-content">
+			<h2 id="schemaModalTitle">Yeni Şema</h2>
+			<div class="grid" style="margin-bottom:10px">
+				<label>
+					<div class="muted">Şema adı</div>
+					<input id="schemaName" placeholder="Örn: Not, Ürün, Görev" />
+				</label>
+			</div>
+			<div class="row space">
+				<div class="muted">Property ekleyin. Desteklenen tipler: <b>Title, Text, Number, Select</b>. Select için seçenekleri virgülle girin.</div>
+				<button id="btnAddProp" class="btn-sm">+ Property Ekle</button>
+			</div>
+			<div id="propList" class="grid" style="margin-top:8px"></div>
+			<div class="row end" style="margin-top:12px">
+				<button id="btnCloseSchema" class="btn-ghost">Kapat</button>
+				<button id="btnSaveSchema">Kaydet</button>
+			</div>
+<!-- KAYIT MODALI -->
+<div id="recordModal" class="modal">
+  <div class="modal-content">
+    <h2 id="recordModalTitle">Yeni Kayıt</h2>
+    <div id="recordForm" class="grid"></div>
+    <div class="row end" style="margin-top:12px">
+      <button id="btnCloseRecord" class="btn-ghost">Kapat</button>
+      <button id="btnSaveRecord">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+
+<script type="module" src="ui.js"></script>
+<script type="module" src="db.js"></script>
+<script type="module" src="schema.js"></script>
+<script type="module" src="records.js"></script>
+</body>
+</html>

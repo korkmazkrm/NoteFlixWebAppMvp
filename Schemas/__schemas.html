@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notion‑like • Çoklu Şema + Kayıtlar (Decimal Destekli Number)</title>
+<style>
+  :root{
+    --bg:#0b0f14;--panel:#121822;--ink:#e6edf3;--muted:#9fb0c3;--line:#1f2937;--brand:#7aa2f7;--danger:#ef4444
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+  header{background:var(--panel);padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+  h1{font-size:18px;margin:0;color:var(--brand)}
+  main{padding:16px;max-width:1000px;margin:auto}
+  button{padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:#0f1520;color:var(--ink);cursor:pointer}
+  button:hover{background:#152a44}
+  .btn-sm{font-size:13px;padding:5px 8px}
+  .btn-danger{background:#3a1218;border-color:#5a212a;color:#ffd3d3}
+  .btn-ghost{background:transparent;color:var(--muted)}
+  input,select{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0f1520;color:var(--ink)}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+  th{color:var(--muted)}
+  .grid{display:grid;gap:8px}
+  .prop-row{display:grid;grid-template-columns:1fr 140px 1fr auto;gap:8px;align-items:end}
+  .muted{color:var(--muted);font-size:13px}
+  .row{display:flex;gap:8px;align-items:center}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-content{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;width:90%;max-width:720px;max-height:90dvh;overflow:auto}
+  .modal h2{margin:0 0 8px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>📘 Şema Tabanlı Notion‑like Database</h1>
+  <div class="row">
+    <button id="btnNewSchema">Yeni Şema Oluştur</button>
+    <button id="btnExportSchemas" class="btn-ghost">Şemaları Dışa Aktar</button>
+    <label class="btn-ghost" for="fileImportSchemas">Şema İçe Aktar</label>
+    <input id="fileImportSchemas" type="file" accept="application/json" style="display:none"/>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>Şemalar</h2>
+    <p class="muted">Listeden bir şema seçip <b>Kayıt Oluştur</b> ile formu aç. <b>Düzenle</b> ile şemayı değiştir, <b>Sil</b> ile yalnız şemayı veya bağlı kayıtlarla birlikte kaldır.</p>
+    <table id="schemaTable">
+      <thead><tr><th>Şema Adı</th><th>Property Sayısı</th><th>Properties (özet)</th><th>İşlemler</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section style="margin-top:24px">
+    <h2>Kayıtlar</h2>
+    <table id="recordTable">
+      <thead><tr><th>Şema</th><th>Veri</th><th>Oluşturma</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+
+<div id="schemaModal" class="modal">
+  <div class="modal-content">
+    <h2 id="schemaModalTitle">Yeni Şema</h2>
+    <div class="grid" style="margin-bottom:10px">
+      <label>
+        <div class="muted">Şema adı</div>
+        <input id="schemaName" placeholder="Örn: Not, Ürün, Görev" />
+      </label>
+    </div>
+    <div class="row" style="justify-content:space-between">
+      <div class="muted">Property ekleyin. Desteklenen tipler: <b>Title, Text, Number, Select</b>. Select için seçenekleri virgülle girin.</div>
+      <button id="btnAddProp" class="btn-sm">+ Property Ekle</button>
+    </div>
+    <div id="propList" class="grid" style="margin-top:8px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button id="btnCloseSchema" class="btn-ghost">Kapat</button>
+      <button id="btnSaveSchema">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<div id="recordModal" class="modal">
+  <div class="modal-content">
+    <h2 id="recordModalTitle">Yeni Kayıt</h2>
+    <div id="recordForm" class="grid"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button id="btnCloseRecord" class="btn-ghost">Kapat</button>
+      <button id="btnSaveRecord">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DB_NAME='multi_schema_db_v2';
+const STORE_SCHEMAS='schemas';
+const STORE_RECORDS='records';
+let db;
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(STORE_SCHEMAS)) db.createObjectStore(STORE_SCHEMAS,{keyPath:'name'});
+      if(!db.objectStoreNames.contains(STORE_RECORDS)) db.createObjectStore(STORE_RECORDS,{keyPath:'id',autoIncrement:true});
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function withStore(name,mode,fn){
+  return openDB().then(d=> new Promise((res,rej)=>{ const tx=d.transaction(name,mode); const st=tx.objectStore(name); const out=fn(st); tx.oncomplete=()=>res(out); tx.onerror=()=>rej(tx.error);}));
+}
+
+const schemaStore={
+  getAll(){return withStore(STORE_SCHEMAS,'readonly',s=>new Promise(r=>{const rq=s.getAll();rq.onsuccess=()=>r(rq.result||[]);}));},
+  get(name){return withStore(STORE_SCHEMAS,'readonly',s=>new Promise(r=>{const rq=s.get(name);rq.onsuccess=()=>r(rq.result);}));},
+  put(schema){return withStore(STORE_SCHEMAS,'readwrite',s=>s.put(schema));},
+  delete(name){return withStore(STORE_SCHEMAS,'readwrite',s=>s.delete(name));}
+};
+
+const recordStore={
+  add(rec){return withStore(STORE_RECORDS,'readwrite',s=>s.add(rec));},
+  all(){return withStore(STORE_RECORDS,'readonly',s=>new Promise(r=>{const rq=s.getAll();rq.onsuccess=()=>r(rq.result||[]);}));},
+  deleteBySchema(schema){return withStore(STORE_RECORDS,'readwrite',s=>new Promise(r=>{const rq=s.openCursor();rq.onsuccess=()=>{const cur=rq.result;if(cur){ if(cur.value.schema===schema){cur.delete();} cur.continue();} else r();};}));},
+  renameSchema(oldName,newName){return withStore(STORE_RECORDS,'readwrite',s=>new Promise(r=>{const rq=s.openCursor();rq.onsuccess=()=>{const cur=rq.result;if(cur){const v=cur.value;if(v.schema===oldName){v.schema=newName;cur.update(v);} cur.continue();} else r();};}));}
+};
+
+const $=q=>document.querySelector(q);
+const schemaModal=$('#schemaModal');
+const recordModal=$('#recordModal');
+function showModal(m){m.style.display='flex';}
+function closeModal(m){m.style.display='none';}
+
+function propRowTemplate(p={name:'',type:'Text',options:[]}){
+  const wrap=document.createElement('div'); wrap.className='prop-row';
+  wrap.innerHTML=`
+    <input class="pname" placeholder="Property adı" value="${p.name||''}"/>
+    <select class="ptype">
+      <option ${p.type==='Title'?'selected':''}>Title</option>
+      <option ${p.type==='Text'?'selected':''}>Text</option>
+      <option ${p.type==='Number'?'selected':''}>Number</option>
+      <option ${p.type==='Select'?'selected':''}>Select</option>
+    </select>
+    <input class="poptions" placeholder="Select için: Low, Medium, High" value="${(p.options||[]).join(', ') }" ${p.type==='Select'?'':'disabled'} />
+    <div class="row" style="justify-content:flex-end"><button class="btn-sm btn-ghost">Sil</button></div>
+  `;
+  const typeSel=wrap.querySelector('.ptype');
+  const opt=wrap.querySelector('.poptions');
+  typeSel.addEventListener('change',()=>{ if(typeSel.value==='Select'){opt.disabled=false; opt.placeholder='Low, Medium, High';} else {opt.disabled=true; opt.value='';}});
+  wrap.querySelector('button').addEventListener('click',()=>wrap.remove());
+  return wrap;
+}
+
+let editMode=false; let editingSchemaName=null;
+
+async function renderSchemaTable(){
+  const schemas=await schemaStore.getAll();
+  const tb=$('#schemaTable tbody'); tb.innerHTML='';
+  schemas.sort((a,b)=>a.name.localeCompare(b.name));
+  for(const sc of schemas){
+    const tr=document.createElement('tr');
+    const propsSummary=(sc.properties||[]).map(p=>`${p.name} (${p.type})`).slice(0,4).join(', ') + ((sc.properties||[]).length>4?' …':'');
+    tr.innerHTML=`
+      <td>${sc.name}</td>
+      <td>${sc.properties.length}</td>
+      <td class="muted">${propsSummary}</td>
+      <td>
+        <div class="row">
+          <button class="btn-sm" data-act="create">Kayıt Oluştur</button>
+          <button class="btn-sm" data-act="edit">Düzenle</button>
+          <button class="btn-sm btn-danger" data-act="del">Sil</button>
+        </div>
+      </td>`;
+    tr.querySelector('[data-act="create"]').addEventListener('click',()=> openRecordModal(sc));
+    tr.querySelector('[data-act="edit"]').addEventListener('click',()=> openSchemaModal(sc));
+    tr.querySelector('[data-act="del"]').addEventListener('click',()=> deleteSchemaFlow(sc.name));
+    tb.appendChild(tr);
+  }
+}
+
+async function renderRecordTable(){
+  const recs=await recordStore.all();
+  const tb=$('#recordTable tbody'); tb.innerHTML='';
+  recs.sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
+  for(const r of recs){
+    const vals=Object.entries(r.data||{}).map(([k,v])=>`${k}: ${v}`).join(', ');
+    const tr=document.createElement('tr');
+    const dt=new Date(r.createdAt||Date.now()).toLocaleString();
+    tr.innerHTML=`<td>${r.schema}</td><td>${vals}</td><td class="muted">${dt}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function openSchemaModal(schema){
+  editMode=!!schema; editingSchemaName=schema? schema.name : null;
+  $('#schemaModalTitle').textContent = editMode ? `Şemayı Düzenle: ${schema.name}` : 'Yeni Şema';
+  $('#schemaName').value = schema? schema.name : '';
+  const list=$('#propList'); list.innerHTML='';
+  const props = schema? (schema.properties||[]) : [{name:'Title',type:'Title',options:[]}];
+  props.forEach(p=> list.appendChild(propRowTemplate(p)) );
+  showModal(schemaModal);
+}
+
+$('#btnNewSchema').addEventListener('click',()=> openSchemaModal(null));
+$('#btnCloseSchema').addEventListener('click',()=> closeModal(schemaModal));
+$('#btnAddProp').addEventListener('click',()=> $('#propList').appendChild(propRowTemplate({})));
+
+$('#btnSaveSchema').addEventListener('click', async ()=>{
+  const name=$('#schemaName').value.trim(); if(!name){alert('Şema adı gerekli');return;}
+  const rows=[...document.querySelectorAll('#propList .prop-row')];
+  const properties=rows.map(r=>{
+    const n=r.querySelector('.pname').value.trim();
+    const t=r.querySelector('.ptype').value;
+    const opts=(r.querySelector('.poptions').value||'').split(',').map(x=>x.trim()).filter(Boolean);
+    return {name:n,type:t,options:opts};
+  }).filter(p=>p.name);
+  if(!properties.length){alert('En az bir property ekleyin');return;}
+  const existing=await schemaStore.getAll();
+  const nameTaken=existing.some(s=> s.name===name && (!editMode || s.name!==editingSchemaName));
+  if(nameTaken){ alert('Bu isimde bir şema zaten var.'); return; }
+  if(editMode){
+    if(name!==editingSchemaName){
+      await recordStore.renameSchema(editingSchemaName, name);
+      await schemaStore.delete(editingSchemaName);
+    }
+    await schemaStore.put({name, properties});
+  } else {
+    await schemaStore.put({name, properties});
+  }
+  closeModal(schemaModal);
+  await renderSchemaTable();
+});
+
+async function deleteSchemaFlow(schemaName){
+  if(!confirm(`\"${schemaName}\" şemasını silmek istiyor musunuz?`)) return;
+  const withRecords = confirm('Bu şemaya bağlı KAYITLARI da silelim mi? "Tamam" derseniz kayıtlar da silinir, "İptal" derseniz sadece şema silinir.');
+  await schemaStore.delete(schemaName);
+  if(withRecords){ await recordStore.deleteBySchema(schemaName); }
+  await renderSchemaTable();
+  await renderRecordTable();
+}
+
+let activeSchema=null;
+function openRecordModal(schema){
+  activeSchema=schema;
+  $('#recordModalTitle').textContent = `Yeni Kayıt • ${schema.name}`;
+  const form=$('#recordForm'); form.innerHTML='';
+  (schema.properties||[]).forEach(p=>{
+    const row=document.createElement('div'); row.className='grid';
+    const lab=document.createElement('label'); lab.innerHTML = `<span class=\"muted\">${p.name} (${p.type})</span>`;
+    let field;
+    if(p.type==='Number'){
+      field=document.createElement('input');
+      field.type='number';
+      field.step='any'; // decimal destekli number
+    } else if(p.type==='Select'){
+      field=document.createElement('select');
+      const blank=document.createElement('option'); blank.value=''; blank.textContent='—'; field.appendChild(blank);
+      (p.options||[]).forEach(opt=>{ const o=document.createElement('option'); o.value=opt; o.textContent=opt; field.appendChild(o); });
+    } else { field=document.createElement('input'); field.type='text'; }
+    field.dataset.prop=p.name;
+    row.appendChild(lab); row.appendChild(field); form.appendChild(row);
+  });
+  showModal(recordModal);
+}
+
+$('#btnCloseRecord').addEventListener('click',()=> closeModal(recordModal));
+$('#btnSaveRecord').addEventListener('click', async ()=>{
+  if(!activeSchema){ alert('Önce bir şema seçin'); return; }
+  const data={};
+  document.querySelectorAll('#recordForm [data-prop]').forEach(el=>{
+    data[el.dataset.prop]= el.value;
+  });
+  await recordStore.add({ schema: activeSchema.name, data, createdAt: Date.now() });
+  closeModal(recordModal);
+  await renderRecordTable();
+});
+
+$('#btnExportSchemas').addEventListener('click', async ()=>{
+  const list=await schemaStore.getAll();
+  const blob=new Blob([JSON.stringify(list,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='schemas.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+$('#fileImportSchemas').addEventListener('change', async (e)=>{
+  const f=e.target.files[0]; if(!f) return; const text=await f.text();
+  try{
+    const list=JSON.parse(text);
+    if(!Array.isArray(list)) throw new Error('Geçersiz dosya');
+    for(const sc of list){ if(sc && sc.name && Array.isArray(sc.properties)) await schemaStore.put(sc); }
+    await renderSchemaTable();
+    alert('Şemalar içe aktarıldı');
+  }catch(err){ alert('Hata: '+(err.message||err)); }
+  e.target.value='';
+});
+
+(async()=>{ db=await openDB(); await renderSchemaTable(); await renderRecordTable(); })();
+</script>
+</body>
+</html>

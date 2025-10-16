@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="tr">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Noteflix Editor — Full Toolbar + Popups + Paste</title>
+		<link rel="icon" href="data:image/svg+xml,
+			<svg
+				xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+				<text y='.9em' font-size='90'>📝</text>
+			</svg>">
+		<!-- Icons & Fonts -->
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+		<link href="https://fonts.googleapis.com/css2?family=Roboto&family=Open+Sans&family=Lora&family=Inconsolata&display=swap" rel="stylesheet">
+		<link rel="stylesheet" href="/Content/editor/editor.css">
+		<!-- SimpleDTP CSS -->
+		<link rel="stylesheet" href="/Content/dtp/dtp.css">
+		<script type="importmap"> {
+			"imports": {
+				"@tiptap/core": "https://esm.sh/@tiptap/core@2.1.13",
+				"@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.1.13",
+				"@tiptap/extension-task-list": "https://esm.sh/@tiptap/extension-task-list@2.1.13",
+				"@tiptap/extension-task-item": "https://esm.sh/@tiptap/extension-task-item@2.1.13",
+				"@tiptap/extension-text-style": "https://esm.sh/@tiptap/extension-text-style@2.1.13",
+				"@tiptap/extension-color": "https://esm.sh/@tiptap/extension-color@2.1.13",
+				"@tiptap/extension-highlight": "https://esm.sh/@tiptap/extension-highlight@2.1.13",
+				"@tiptap/extension-subscript": "https://esm.sh/@tiptap/extension-subscript@2.1.13",
+				"@tiptap/extension-superscript": "https://esm.sh/@tiptap/extension-superscript@2.1.13",
+				"@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.1.13",
+				"@tiptap/extension-text-align": "https://esm.sh/@tiptap/extension-text-align@2.1.13",
+				"@tiptap/extension-underline": "https://esm.sh/@tiptap/extension-underline@2.1.13",
+				"@tiptap/extension-link": "https://esm.sh/@tiptap/extension-link@2.1.13",
+				"@tiptap/extension-youtube": "https://esm.sh/@tiptap/extension-youtube@2.1.13",
+				"@tiptap/extension-image": "https://esm.sh/@tiptap/extension-image@2.1.13"
+			}
+			}
+  		</script>
+	</head>
+	<body>
+		<div class="app-container">
+			<!-- Sol Panel - Menü -->
+			<div class="sidebar">
+				<div class="sidebar-header">
+					<h2>NoteFlix</h2>
+					<div class="user-profile">
+						<i class="bi bi-person-circle"></i>
+					</div>
+				</div>
+				<div class="sidebar-nav">
+					<div class="nav-item active" data-action="home">
+						<i class="bi bi-house"></i>
+						<span>Ana Sayfa</span>
+					</div>
+					<div class="nav-item" id="dark-mode-toggle" data-action="dark-mode">
+						<i class="bi bi-moon"></i>
+						<span>Karanlık Mod</span>
+					</div>
+					<div class="nav-item" data-action="notes">
+						<i class="bi bi-file-text"></i>
+						<span>Notlar</span>
+						<span class="count">2</span>
+					</div>
+					<div class="nav-item" data-action="favorites">
+						<i class="bi bi-star"></i>
+						<span>Favoriler</span>
+						<span class="count">1</span>
+					</div>
+					<div class="nav-item" data-action="reminders">
+						<i class="bi bi-bell"></i>
+						<span>Hatırlatıcılar</span>
+						<span class="count">0</span>
+					</div>
+					<div class="nav-item" data-action="archive">
+						<i class="bi bi-archive"></i>
+						<span>Arşiv</span>
+						<span class="count">0</span>
+					</div>
+					<div class="nav-item" data-action="tags">
+						<i class="bi bi-tags"></i>
+						<span>Etiketler</span>
+						<span class="count">0</span>
+					</div>
+					<div class="nav-item" data-action="folders">
+						<i class="bi bi-folder2"></i>
+						<span>Klasörler</span>
+						<span class="count">0</span>
+					</div>
+					<div class="nav-item" data-action="trash">
+						<i class="bi bi-trash"></i>
+						<span>Çöp Kutusu</span>
+						<span class="count">3</span>
+					</div>
+				</div>
+				<div class="sidebar-bottom-container">
+					<div class="action-buttons-group">
+						<button type="button" class="action-btn" id="sidebar-notes-btn" data-tippy-content="Notlar">
+							<i class="bi bi-journal"></i>
+						</button>
+						<button type="button" class="action-btn" id="sidebar-folders-btn" data-tippy-content="Klasörler">
+							<i class="bi bi-folder2"></i>
+						</button>
+						<button type="button" class="action-btn" id="sidebar-tags-btn" data-tippy-content="Etiketler">
+							<i class="bi bi-tags-fill"></i>
+						</button>
+					</div>
+				</div>
+			</div>
+			<!-- Orta Panel - Not Listesi -->
+			<div class="notes-panel">
+				<div class="notes-header">
+					<div class="search-container">
+						<input type="text" placeholder="Notlarda ara..." class="search-input" />
+						<i class="bi bi-search"></i>
+					</div><!--
+					<div class="view-controls">
+						<button class="view-btn active">
+							<i class="bi bi-list"></i>
+						</button>
+						<button class="view-btn">
+							<i class="bi bi-grid"></i>
+						</button>
+					</div>-->
+				</div>
+				<div class="notes-content">
+					<div class="notes-header-section">
+						<h3>NOTLAR</h3>
+						<div class="note-list-header-buttons">
+							<button class="permanent-delete-btn" id="permanent-delete-btn" onclick="permanentDeleteAllNotes()" data-tippy-content="Tüm Notları Kalıcı Olarak Sil" style="display: none;">
+								<i class="bi bi-trash"></i>
+							</button>
+							<button class="list-options-btn" id="list-options-btn" data-tippy-content="Listeleme Seçenekleri">
+								<i class="bi bi-view-list"></i>
+							</button>
+							<button class="sort-btn" id="sort-btn" data-tippy-content="Sıralama Seçenekleri">
+								<i class="bi bi-funnel-fill"></i>
+							</button>
+							<button class="new-note-btn" onclick="createNewNote()" data-tippy-content="Yeni Kayıt">
+								<i class="bi bi-plus-square-fill"></i>
+							</button>
+						</div>
+					</div>
+					<div class="notes-list">
+						<!-- Notlar burada listelenecek -->
+					</div>
+				</div>
+			</div>
+			<!-- Sürüklenebilir Divider -->
+			<div class="panel-divider" id="panel-divider"></div>
+			<!-- Sağ Panel - Editor -->
+			<div class="editor-panel">
+				<div class="editor-header">
+				    <!--
+					<div class="editor-tabs">
+						<div class="tab active">
+							<span>Yeni Kayıt</span>
+							<button class="tab-close">×</button>
+						</div>
+					</div>
+					-->
+					<div class="editor-actions">
+						<div class="navigation-buttons">
+							<button type="button" class="previous-note" data-tippy-content="Önceki Not">
+								<i class="bi bi-arrow-left-square"></i>
+							</button>
+							<button type="button" class="next-note" data-tippy-content="Sonraki Not">
+								<i class="bi bi-arrow-right-square"></i>
+							</button>
+						</div>
+						<div style="flex: 1;"></div>
+						<button id="save-note-btn" class="save-btn">Kaydet</button>
+						<button class="action-btn">
+							<i class="bi bi-cloud-arrow-up"></i>
+						</button>
+						<button class="action-btn">
+							<i class="bi bi-three-dots"></i>
+						</button>
+					</div>
+				</div>
+				<div id="editor-control">
+					<div id="toolbar">
+						<!-- basic -->
+						<button id="bold-btn" data-tippy-content="Bold">
+							<i class="bi bi-type-bold"></i>
+						</button>
+						<button id="italic-btn" data-tippy-content="Italic">
+							<i class="bi bi-type-italic"></i>
+						</button>
+						<button id="underline-btn" data-tippy-content="Underline">
+							<i class="bi bi-type-underline"></i>
+						</button>
+						<button id="strike-btn" data-tippy-content="Strike">
+							<i class="bi bi-type-strikethrough"></i>
+						</button>
+						<!-- headings -->
+						<button id="heading-btn" data-tippy-content="Headings">
+							<i class="bi bi-h-square"></i>
+						</button>
+						<select id="font-family-select" data-tippy-content="Font Family">
+							<option value="sans-serif" selected>Sans-serif</option>
+							<option value="serif">Serif</option>
+							<option value="monospace">Monospace</option>
+							<option value="Roboto, sans-serif">Roboto</option>
+							<option value="'Open Sans', sans-serif">Open Sans</option>
+							<option value="Lora, serif">Lora</option>
+							<option value="Inconsolata, monospace">Inconsolata</option>
+						</select>
+						<!-- lists -->
+						<button id="list-btn" data-tippy-content="Lists">
+							<i class="bi bi-list"></i>
+						</button>
+						<!-- alignment -->
+						<button id="align-btn" data-tippy-content="Text Alignment">
+							<i class="bi bi-text-left"></i>
+						</button>
+						<!-- colors -->
+						<button id="palette-btn" data-tippy-content="Colors">
+							<i class="bi bi-palette"></i>
+						</button>
+						<!-- actions -->
+						<button id="actions-btn" data-tippy-content="Actions">
+							<i class="bi bi-three-dots"></i>
+						</button>
+						<button id="url-btn" data-tippy-content="Insert Link">
+							<i class="bi bi-link-45deg"></i>
+						</button>
+						<button id="video-btn" data-tippy-content="Insert Video">
+							<i class="bi bi-camera-video"></i>
+						</button>
+						<button id="image-btn" data-tippy-content="Insert Image">
+							<i class="bi bi-image"></i>
+						</button>
+						<button id="undo-btn" data-tippy-content="Undo">
+							<i class="bi bi-arrow-counterclockwise"></i>
+						</button>
+						<button id="redo-btn" data-tippy-content="Redo">
+							<i class="bi bi-arrow-clockwise"></i>
+						</button>
+						<button id="clear-format-btn" data-tippy-content="Clear Format">
+							<i class="bi bi-eraser"></i>
+						</button>
+						<!-- font size -->
+						<span id="font-controls">
+							<button id="font-dec" data-tippy-content="Font -">–</button>
+							<span id="font-size-label">14px</span>
+							<button id="font-inc" data-tippy-content="Font +">+</button>
+						</span>
+					</div>
+					<!-- Title section -->
+					<div id="title-section">
+						<input type="text" id="note-title" placeholder="Note title" />
+					</div>
+			<div id="editor"></div>
+			<div id="checklist" style="display: none;">
+				<!-- Checklist items buraya dinamik olarak eklenecek -->
+			</div>
+		</div>
+	<!-- Note Metadata Container (Due Date + Reminder + Parent Note) -->
+	<div id="note-metadata-container" class="note-metadata-container" style="display: none;">
+		<div id="due-date-display" class="due-date-display" style="display: none;" data-tippy-content="Hedef Tarih">
+			<i class="bi bi-calendar-event"></i>
+			<span id="due-date-text"></span>
+			<button type="button" id="clear-due-date-btn" class="clear-due-date-btn" title="Hedef tarihi kaldır">
+				<i class="bi bi-x"></i>
+			</button>
+		</div>
+		<div id="reminder-display" class="reminder-display" style="display: none;" data-tippy-content="Hatırlatıcı">
+			<i class="bi bi-bell"></i>
+			<span id="reminder-text"></span>
+			<button type="button" id="clear-reminder-btn" class="clear-reminder-btn" title="Hatırlatıcıyı kaldır">
+				<i class="bi bi-x"></i>
+			</button>
+		</div>
+		<div id="parent-note-display" class="parent-note-display" style="display: none;" data-tippy-content="Üst Not">
+			<i class="bi bi-pencil-square"></i>
+			<span id="parent-note-text"></span>
+			<button type="button" id="clear-parent-note-btn" class="clear-parent-note-btn" title="Üst notu kaldır">
+				<i class="bi bi-x"></i>
+			</button>
+		</div>
+		<div id="folder-display" class="folder-display" style="display: none;" data-tippy-content="Klasör">
+			<i class="bi bi-folder"></i>
+			<span id="folder-text"></span>
+			<button type="button" id="clear-folder-btn" class="clear-folder-btn" title="Klasörü kaldır">
+				<i class="bi bi-x"></i>
+			</button>
+		</div>
+		<div id="tag-display-container" class="tag-display-container">
+			<!-- Tag displays will be dynamically added here -->
+		</div>
+		<div id="comments-count-display" class="comments-count-display" style="display: none;" data-tippy-content="Yorumlar">
+			<i class="bi bi-chat-dots"></i>
+			<span id="comments-count-text"></span>
+		</div>
+	</div>
+	<!-- Action Buttons ve Sayaç -->
+		<div class="action-buttons-container">
+					<div class="action-buttons-group">
+						<button type="button" class="action-btn" id="lockBtn" data-tippy-content="Notu Şifrele">
+							<i class="bi bi-key"></i>
+						</button>
+						<button type="button" class="action-btn" id="noteBgColorPopupBtn" data-tippy-content="Arka Plan Seç">
+							<i class="bi bi-palette"></i>
+						</button>
+						<button type="button" class="action-btn" id="tagPopupBtn" data-tippy-content="Etiket Ekle/Çıkar">
+							<i class="bi bi-tags"></i>
+						</button>
+					<button type="button" class="action-btn" id="checklistBtn" data-tippy-content="Kontrol Listesi">
+						<i class="bi bi-list-check"></i>
+					</button>
+					<button type="button" class="action-btn" id="dueDateBtn" data-tippy-content="Hedef Tarih Seç">
+						<i class="bi bi-calendar-event"></i>
+					</button>
+					<button type="button" class="action-btn" id="reminderBtn" data-tippy-content="Hatırlatıcı Ekle">
+						<i class="bi bi-bell"></i>
+					</button>
+						<button type="button" class="action-btn" id="folderPopupBtn" data-tippy-content="Klasör Seç">
+							<i class="bi bi-folder2"></i>
+						</button>
+						<button type="button" class="action-btn" id="parent-note-btn" data-tippy-content="Üst Not Seç">
+							<i class="bi bi-pencil-square"></i>
+						</button>
+						<!--<button type="button" class="action-btn" id="starredBtn"><i class="bi bi-star"></i></button>-->
+						<button type="button" class="action-btn" id="commentsBtn" data-tippy-content="Yorumlar">
+							<i class="bi bi-chat-dots"></i>
+						</button>
+						<!--<button type="button" class="action-btn" id="copyBtn"><i class="bi bi-files"></i></button><button type="button" class="action-btn" id="archiveBtn"><i class="bi bi-box-arrow-down"></i></button>-->
+						<button type="button" class="action-btn" id="saveTemplateBtn" data-tippy-content="Şablon Olarak Kaydet">
+							<i class="bi bi-file-earmark-plus"></i>
+						</button>
+						<button type="button" class="action-btn" id="historyBtn" data-tippy-content="Tarihçe">
+							<i class="bi bi-clock-history"></i>
+						</button>
+						<button type="button" class="action-btn" id="resizeBtn" data-tippy-content="Genişlet/Daralt">
+							<i class="bi bi-arrows-angle-expand"></i>
+						</button>
+					</div>
+			<!-- Editor Sayaç -->
+			<div class="editor-counter">
+				<span id="word-count">0 kelime</span>
+				<span id="char-count">0 karakter</span>
+			</div>
+		</div>
+		</div>
+		</div>
+		</div>
+		<!-- Heading popup -->
+		<div id="heading-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Headings</span>
+			</div>
+			<div class="popup-form">
+				<button data-level="1" data-tippy-content="H1">
+					<i class="bi bi-type-h1"></i>
+				</button>
+				<button data-level="2" data-tippy-content="H2">
+					<i class="bi bi-type-h2"></i>
+				</button>
+				<button data-level="3" data-tippy-content="H3">
+					<i class="bi bi-type-h3"></i>
+				</button>
+				<button data-level="4" data-tippy-content="H4">
+					<i class="bi bi-type-h4"></i>
+				</button>
+				<button data-level="5" data-tippy-content="H5">
+					<i class="bi bi-type-h5"></i>
+				</button>
+				<button data-level="6" data-tippy-content="H6">
+					<i class="bi bi-type-h6"></i>
+				</button>
+			</div>
+		</div>
+		<!-- Blockquote popup -->
+		<div id="blockquote-popup" class="popup d-none">
+			<button data-type="left" data-tippy-content="Left Blockquote">
+				<i class="bi bi-blockquote-left"></i>
+			</button>
+			<button data-type="right" data-tippy-content="Right Blockquote">
+				<i class="bi bi-blockquote-right"></i>
+			</button>
+		</div>
+		<!-- List popup -->
+		<div id="list-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Lists</span>
+			</div>
+			<div class="popup-form">
+				<button data-action="bullet" data-tippy-content="Bulleted">
+					<i class="bi bi-list-ul"></i>
+				</button>
+				<button data-action="ordered" data-tippy-content="Numbered">
+					<i class="bi bi-list-ol"></i>
+				</button>
+				<button data-action="task" data-tippy-content="Task">
+					<i class="bi bi-list-task"></i>
+				</button>
+			</div>
+		</div>
+		<!-- Alignment popup -->
+		<div id="align-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Text Alignment</span>
+			</div>
+			<div class="popup-form">
+				<button data-align="left" data-tippy-content="Align Left">
+					<i class="bi bi-text-left"></i>
+				</button>
+				<button data-align="center" data-tippy-content="Align Center">
+					<i class="bi bi-text-center"></i>
+				</button>
+				<button data-align="right" data-tippy-content="Align Right">
+					<i class="bi bi-text-right"></i>
+				</button>
+				<button data-align="justify" data-tippy-content="Justify">
+					<i class="bi bi-justify"></i>
+				</button>
+			</div>
+		</div>
+		<!-- Palette selector -->
+		<div id="palette-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Colors</span>
+			</div>
+			<div class="popup-form">
+				<button id="textcolor-btn" data-tippy-content="Text color">
+					<i class="bi bi-alphabet-uppercase"></i>
+				</button>
+				<button id="bgcolor-btn" data-tippy-content="Background color">
+					<i class="bi bi-back"></i>
+				</button>
+			</div>
+		</div>
+		<!-- Text Color popup -->
+		<div id="text-popup" class="popup color-popup d-none">
+			<div class="header">
+				<span>Text Color</span>
+				<button id="text-clear" class="clear-btn" data-tippy-content="Clear">
+					<i class="bi bi-eraser-fill"></i>
+				</button>
+			</div>
+			<div class="palette" id="text-popup-colors">
+				<!-- Colors will be populated by JavaScript -->
+			</div>
+		</div>
+		<!-- Background Color popup -->
+		<div id="bg-popup" class="popup color-popup d-none">
+			<div class="header">
+				<span>Background Color</span>
+				<button id="bg-clear" class="clear-btn" data-tippy-content="Clear">
+					<i class="bi bi-eraser-fill"></i>
+				</button>
+			</div>
+			<div class="palette" id="bg-popup-colors">
+				<!-- Colors will be populated by JavaScript -->
+			</div>
+		</div>
+		<!-- Note Background Color popup -->
+		<div id="note-bg-popup" class="popup color-popup d-none">
+			<div class="header">
+				<span>Note Background Color</span>
+				<button id="note-bg-clear" class="clear-btn" data-tippy-content="Clear">
+					<i class="bi bi-eraser-fill"></i>
+				</button>
+			</div>
+			<div class="palette">
+				<button class="swatch" data-color="#ffffff" style="background:#ffffff; border: 1px solid #ddd;"></button>
+				<button class="swatch" data-color="#f8f9fa" style="background:#f8f9fa"></button>
+				<button class="swatch" data-color="#e9ecef" style="background:#e9ecef"></button>
+				<button class="swatch" data-color="#dee2e6" style="background:#dee2e6"></button>
+				<button class="swatch" data-color="#f0f8ff" style="background:#f0f8ff"></button>
+				<button class="swatch" data-color="#e6f3ff" style="background:#e6f3ff"></button>
+				<button class="swatch" data-color="#cce7ff" style="background:#cce7ff"></button>
+				<button class="swatch" data-color="#b3d9ff" style="background:#b3d9ff"></button>
+				<button class="swatch" data-color="#f0fff0" style="background:#f0fff0"></button>
+				<button class="swatch" data-color="#e6ffe6" style="background:#e6ffe6"></button>
+				<button class="swatch" data-color="#ccffcc" style="background:#ccffcc"></button>
+				<button class="swatch" data-color="#b3ffb3" style="background:#b3ffb3"></button>
+				<button class="swatch" data-color="#fffef0" style="background:#fffef0"></button>
+				<button class="swatch" data-color="#fffce6" style="background:#fffce6"></button>
+				<button class="swatch" data-color="#ffe6e6" style="background:#ffe6e6"></button>
+				<button class="swatch" data-color="#ffcccc" style="background:#ffcccc"></button>
+				<button class="swatch" data-color="#ffb3b3" style="background:#ffb3b3"></button>
+				<button class="swatch" data-color="#ffe6f0" style="background:#ffe6f0"></button>
+				<button class="swatch" data-color="#ffccdd" style="background:#ffccdd"></button>
+				<button class="swatch" data-color="#f5e6d3" style="background:#f5e6d3"></button>
+				<button class="swatch" data-color="#e6d3b7" style="background:#e6d3b7"></button>
+			</div>
+		</div>
+		<!-- URL Link popup -->
+		<div id="url-popup" class="popup url-popup d-none">
+			<div class="url-header">
+				<span>Insert Link</span>
+			</div>
+			<div class="url-form">
+				<div class="url-field">
+					<label for="link-text">Link text:</label>
+					<input type="text" id="link-text" placeholder="Link text" />
+				</div>
+				<div class="url-field">
+					<label for="link-url">URL:</label>
+					<input type="url" id="link-url" placeholder="https://example.com/" required />
+				</div>
+				<div class="url-buttons">
+					<button id="url-cancel" class="url-btn cancel-btn">Cancel</button>
+					<button id="url-insert" class="url-btn insert-btn">Insert</button>
+				</div>
+			</div>
+		</div>
+		<!-- Video popup -->
+		<div id="video-popup" class="popup video-popup d-none">
+			<div class="video-header">
+				<span>Enter video:</span>
+			</div>
+			<div class="video-form">
+				<div class="video-field">
+					<label for="video-url">Video URL:</label>
+					<input type="url" id="video-url" placeholder="https://www.youtube.com/watch?v=..." required />
+				</div>
+				<div class="video-buttons">
+					<button id="video-cancel" class="video-btn cancel-btn">Cancel</button>
+					<button id="video-insert" class="video-btn insert-btn">Insert</button>
+				</div>
+			</div>
+		</div>
+		<!-- Image popup -->
+		<div id="image-popup" class="popup image-popup d-none">
+			<div class="image-header">
+				<span>Insert Image</span>
+			</div>
+			<div class="image-form">
+				<div class="image-field">
+					<label for="image-file">Select Image:</label>
+					<input type="file" id="image-file" accept="image/*" />
+				</div>
+				<div class="image-buttons">
+					<button id="image-cancel" class="image-btn cancel-btn">Cancel</button>
+					<button id="image-insert" class="image-btn insert-btn">Insert</button>
+				</div>
+			</div>
+		</div>
+		<!-- Actions popup -->
+		<div id="actions-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Actions</span>
+			</div>
+			<div class="popup-form">
+				<button id="subscript-btn" data-tippy-content="Subscript">
+					<i class="bi bi-subscript"></i>
+				</button>
+				<button id="superscript-btn" data-tippy-content="Superscript">
+					<i class="bi bi-superscript"></i>
+				</button>
+				<button id="indent-decrease-btn" data-tippy-content="Decrease Indent">
+					<i class="bi bi-text-indent-left"></i>
+				</button>
+				<button id="indent-increase-btn" data-tippy-content="Increase Indent">
+					<i class="bi bi-text-indent-right"></i>
+				</button>
+				<button id="blockquote-btn" data-tippy-content="Blockquote">
+					<i class="bi bi-blockquote-left"></i>
+				</button>
+				<button id="codeblock-btn" data-tippy-content="Code">
+					<i class="bi bi-code-square"></i>
+				</button>
+				<button id="hr-btn" data-tippy-content="Horizontal Rule">
+					<i class="bi bi-hr"></i>
+				</button>
+			</div>
+		</div>
+		<!-- ListOptions popup -->
+		<div id="list-options-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Listeme Seçenekleri</span>
+			</div>
+		<div class="popup-form fd-column">
+			<div class="popup-form-item" data-action="toggle-compact">
+				<i class="bi bi-h-circle-fill"></i>
+				<span>Kompakt Görünüm</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-color">
+				<i class="bi bi-palette"></i>
+				<span>Renk Atanmışlar</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-checklist-count">
+				<i class="bi bi-list-check"></i>
+				<span>Checklist Sayısını Göster</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-due-date">
+				<i class="bi bi-calendar-check"></i>
+				<span>Hedef Tarihi Olanlar</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-overdue">
+				<i class="bi bi-calendar-x"></i>
+				<span>Hedef Tarihi Geçenler</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-reminder">
+				<i class="bi bi-bell"></i>
+				<span>Hatırlatıcısı Olanlar</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-folder-info">
+				<i class="bi bi-folder"></i>
+				<span>Klasör Bilgisi Olanlar</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-parent-note">
+				<i class="bi bi-pencil-square"></i>
+				<span>Üst Not Seçili Olanlar</span>
+			</div>
+			<div class="popup-form-item" data-action="toggle-has-comments">
+				<i class="bi bi-chat-dots"></i>
+				<span>Yorum Girilmiş Olanlar</span>
+			</div>
+		</div>
+	</div>
+		<!-- Context Menu -->
+		<div id="context-menu" class="context-menu d-none">
+			<div class="context-item" data-action="copy">
+				<i class="bi bi-files"></i>
+				<span>Kopyala</span>
+			</div>
+			<div class="context-item" data-action="favorite">
+				<i class="bi bi-star"></i>
+				<span>Favorilere Ekle</span>
+			</div>
+			<div class="context-item" data-action="archive">
+				<i class="bi bi-archive"></i>
+				<span>Arşive Gönder</span>
+			</div>
+			<div class="context-item" data-action="delete">
+				<i class="bi bi-trash"></i>
+				<span>Sil</span>
+			</div>
+			<div class="context-item" data-action="permanent-delete">
+				<i class="bi bi-trash-fill"></i>
+				<span>Kalıcı Olarak Sil</span>
+			</div>
+		</div>
+		<!-- Command Menu Popup -->
+		<div id="command-popup" class="context-menu d-none">
+			<div class="command-header">
+				<div class="command-filter">
+					<i class="bi bi-search"></i>
+					<input type="text" id="command-filter" placeholder="Komut ara..." />
+				</div>
+			</div>
+			<div class="command-content">
+				<div class="command-item" data-command="bold">
+					<i class="bi bi-type-bold"></i>
+					<span>Kalın</span>
+				</div>
+				<div class="command-item" data-command="italic">
+					<i class="bi bi-type-italic"></i>
+					<span>İtalik</span>
+				</div>
+				<div class="command-item" data-command="underline">
+					<i class="bi bi-type-underline"></i>
+					<span>Altı Çizili</span>
+				</div>
+				<div class="command-item" data-command="strike">
+					<i class="bi bi-type-strikethrough"></i>
+					<span>Üstü Çizili</span>
+				</div>
+				<div class="command-item" data-command="h1">
+					<i class="bi bi-type-h1"></i>
+					<span>Başlık 1</span>
+				</div>
+				<div class="command-item" data-command="h2">
+					<i class="bi bi-type-h2"></i>
+					<span>Başlık 2</span>
+				</div>
+				<div class="command-item" data-command="h3">
+					<i class="bi bi-type-h3"></i>
+					<span>Başlık 3</span>
+				</div>
+				<div class="command-item" data-command="bullet-list">
+					<i class="bi bi-list-ul"></i>
+					<span>Madde İşaretli Liste</span>
+				</div>
+				<div class="command-item" data-command="numbered-list">
+					<i class="bi bi-list-ol"></i>
+					<span>Numaralı Liste</span>
+				</div>
+				<div class="command-item" data-command="task-list">
+					<i class="bi bi-list-task"></i>
+					<span>Görev Listesi</span>
+				</div>
+				<div class="command-item" data-command="blockquote">
+					<i class="bi bi-blockquote-left"></i>
+					<span>Alıntı</span>
+				</div>
+				<div class="command-item" data-command="code-block">
+					<i class="bi bi-code-square"></i>
+					<span>Kod Bloğu</span>
+				</div>
+				<div class="command-item" data-command="link">
+					<i class="bi bi-link-45deg"></i>
+					<span>Bağlantı</span>
+				</div>
+				<div class="command-item" data-command="video">
+					<i class="bi bi-camera-video"></i>
+					<span>Video</span>
+				</div>
+				<div class="command-item" data-command="image">
+					<i class="bi bi-image"></i>
+					<span>Resim</span>
+				</div>
+				<div class="command-item" data-command="divider">
+					<i class="bi bi-hr"></i>
+					<span>Ayırıcı</span>
+				</div>
+			</div>
+		</div>
+		<!-- Checklist Due Date popup -->
+		<div id="checklist-due-date-popup" class="popup d-none">
+			<div class="popup-header">
+				<span>Due Date</span>
+			</div>
+			<div class="popup-form">
+				<div class="datetime-picker">
+					<div class="date-inputs">
+						<input type="date" id="due-date-input" />
+						<input type="time" id="due-time-input" />
+					</div>
+					<div class="datetime-actions">
+						<button id="clear-due-date" class="clear-btn">Clear</button>
+						<button id="save-due-date" class="save-btn">Save</button>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- Reminder popup -->
+		<div id="reminder-popup" class="popup d-none">
+			<div class="popup-header">
+				<span>Hatırlatıcı</span>
+			</div>
+			<div class="popup-form">
+				<div class="datetime-picker">
+					<div class="date-inputs">
+						<input type="date" id="reminder-date-input" />
+						<input type="time" id="reminder-time-input" />
+					</div>
+					<div class="datetime-actions">
+						<button id="clear-reminder" class="clear-btn">Temizle</button>
+						<button id="save-reminder" class="save-btn">Kaydet</button>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- Sort Options popup -->
+		<div id="sort-options-popup" class="popup popup-with-header d-none">
+			<div class="popup-header">
+				<span>Sıralama Seçenekleri</span>
+			</div>
+			<div class="popup-form fd-column">
+				<div class="popup-form-item" data-action="sort-title">
+					<i class="bi bi-type"></i>
+					<span>Başlık</span>
+				</div>
+				<div class="popup-form-item" data-action="sort-created">
+					<i class="bi bi-calendar-plus"></i>
+					<span>Oluşturma Tarihi</span>
+				</div>
+				<div class="popup-form-item" data-action="sort-updated">
+					<i class="bi bi-calendar-event"></i>
+					<span>Güncellenme Tarihi</span>
+				</div>
+			</div>
+		</div>
+		<!-- Permanent Delete Confirmation Modal -->
+		<div id="permanent-delete-modal" class="modal-overlay d-none">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h3>Kalıcı Silme Onayı</h3>
+					<button class="modal-close" onclick="closePermanentDeleteModal()">
+						<i class="bi bi-x"></i>
+					</button>
+				</div>
+				<div class="modal-body">
+					<p id="permanent-delete-message">Bu notları kalıcı olarak silmek istediğinizden emin misiniz?</p>
+					<p class="modal-warning">Bu işlem geri alınamaz!</p>
+				</div>
+				<div class="modal-footer">
+					<button class="modal-btn modal-btn-cancel" onclick="closePermanentDeleteModal()">
+						İptal
+					</button>
+					<button class="modal-btn modal-btn-danger" onclick="confirmPermanentDelete()">
+						Kalıcı Olarak Sil
+					</button>
+				</div>
+			</div>
+	</div>
+	<!-- Parent Note Selection Modal -->
+	<div id="parent-note-modal" class="modal-overlay d-none">
+		<div class="modal-content parent-note-modal">
+			<div class="modal-header">
+				<h3>Üst Not Seç</h3>
+				<button class="modal-close" id="close-parent-note-modal">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="parent-note-search">
+					<input type="text" id="parent-note-search-input" placeholder="Not ara..." />
+				</div>
+				<div class="parent-note-list" id="parent-note-list">
+					<!-- Not listesi dinamik olarak yüklenecek -->
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Single Note Permanent Delete Confirmation Modal -->
+	<div id="single-note-permanent-delete-modal" class="modal-overlay d-none">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Kalıcı Silme Onayı</h3>
+				<button class="modal-close" onclick="closeSingleNotePermanentDeleteModal()">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<p id="single-note-permanent-delete-message">Bu not kalıcı olarak silinecektir. Emin misiniz?</p>
+				<p class="modal-warning">Bu işlem geri alınamaz!</p>
+			</div>
+			<div class="modal-footer">
+				<button class="modal-btn modal-btn-cancel" onclick="closeSingleNotePermanentDeleteModal()">
+					İptal
+				</button>
+				<button class="modal-btn modal-btn-danger" onclick="confirmSingleNotePermanentDelete()">
+					Kalıcı Olarak Sil
+				</button>
+			</div>
+		</div>
+	</div>
+	<!-- Folder Selection Modal -->
+	<div id="folder-modal" class="modal-overlay d-none">
+		<div class="modal-content folder-modal">
+			<div class="modal-header">
+				<h3>Klasör Seç</h3>
+				<button class="modal-close" id="new-folder-btn" title="Yeni Klasör">
+					<i class="bi bi-folder-plus"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="folder-search">
+					<input type="text" id="folder-search-input" placeholder="Klasör ara..." />
+				</div>
+				<div class="folder-list" id="folder-list">
+					<!-- Klasör listesi dinamik olarak yüklenecek -->
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- New Folder Modal -->
+	<div id="new-folder-modal" class="modal-overlay d-none">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Yeni Klasör</h3>
+				<button class="modal-close" onclick="closeNewFolderModal()">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="folder-new">
+					<input type="text" id="new-folder-name-input" placeholder="Klasör adını girin..." />
+				</div>
+				<div class="folder-colors">
+					<div class="color-section">
+						<div class="color-header">
+							<label>Metin Rengi:</label>
+							<button type="button" class="clear-btn" id="folder-text-clear" title="Metin rengini temizle">
+								<i class="bi bi-eraser-fill"></i>
+							</button>
+						</div>
+						<div class="color-picker">
+							<div class="color-swatches" id="folder-text-colors">
+								<!-- Text colors will be populated by JavaScript -->
+							</div>
+						</div>
+					</div>
+					<div class="color-section">
+						<div class="color-header">
+							<label>Arka Plan Rengi:</label>
+							<button type="button" class="clear-btn" id="folder-bg-clear" title="Arka plan rengini temizle">
+								<i class="bi bi-eraser-fill"></i>
+							</button>
+						</div>
+						<div class="color-picker">
+							<div class="color-swatches" id="folder-bg-colors">
+								<!-- Background colors will be populated by JavaScript -->
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="modal-btn modal-btn-cancel" onclick="closeNewFolderModal()">İptal</button>
+				<button class="modal-btn modal-btn-primary" onclick="saveNewFolder()">Kaydet</button>
+			</div>
+		</div>
+	</div>
+	<!-- Tag Selection Modal -->
+	<div id="tag-modal" class="modal-overlay d-none">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Etiket Seç</h3>
+				<button class="modal-close" id="new-tag-btn" onclick="openNewTagModal()">
+					<i class="bi bi-plus-square"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="tag-search">
+					<input type="text" id="tag-search-input" placeholder="Etiket ara..." />
+				</div>
+				<div class="tag-list" id="tag-list">
+					<!-- Etiket listesi dinamik olarak yüklenecek -->
+				</div>
+				<div class="selected-tags-container" id="selected-tags-container" style="display: none;">
+					<div class="selected-tags-header">
+						<h4>Seçilen Etiketler:</h4>
+					</div>
+					<div class="selected-tags-list" id="selected-tags-list">
+						<!-- Seçilen etiketler burada gösterilecek -->
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="modal-btn modal-btn-cancel" onclick="closeTagModal()">İptal</button>
+				<button class="modal-btn modal-btn-primary" onclick="confirmTagSelection()">Tamam</button>
+			</div>
+		</div>
+	</div>
+	<!-- New Tag Modal -->
+	<div id="new-tag-modal" class="modal-overlay d-none">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Yeni Etiket</h3>
+				<button class="modal-close" onclick="closeNewTagModal()">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="tag-new">
+					<input type="text" id="new-tag-name-input" placeholder="Etiket adını girin..." />
+				</div>
+				<div class="tag-colors">
+					<div class="color-section">
+						<div class="color-header">
+							<label>Metin Rengi:</label>
+							<button type="button" class="clear-btn" id="tag-text-clear" title="Metin rengini temizle">
+								<i class="bi bi-eraser-fill"></i>
+							</button>
+						</div>
+						<div class="color-picker">
+							<div class="color-swatches" id="tag-text-colors">
+								<!-- Text colors will be populated by JavaScript -->
+							</div>
+						</div>
+					</div>
+					<div class="color-section">
+						<div class="color-header">
+							<label>Arka Plan Rengi:</label>
+							<button type="button" class="clear-btn" id="tag-bg-clear" title="Arka plan rengini temizle">
+								<i class="bi bi-eraser-fill"></i>
+							</button>
+						</div>
+						<div class="color-picker">
+							<div class="color-swatches" id="tag-bg-colors">
+								<!-- Background colors will be populated by JavaScript -->
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="modal-btn modal-btn-cancel" onclick="closeNewTagModal()">İptal</button>
+				<button class="modal-btn modal-btn-primary" onclick="saveNewTag()">Kaydet</button>
+			</div>
+		</div>
+	</div>
+	<!-- Comments Modal -->
+	<div id="comments-modal" class="modal-overlay" style="display: none;">
+		<div class="modal-content comments-modal">
+			<div class="modal-header">
+				<h3>Yorumlar</h3>
+				<button class="modal-close" id="close-comments-modal">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body comments-modal-body">
+				<div class="comments-input-section">
+					<textarea id="comment-textarea" placeholder="Yorumunuzu yazın..." rows="4"></textarea>
+					<div class="comments-input-actions">
+						<button id="add-comment-btn" class="add-comment-btn">
+							<i class="bi bi-plus"></i>
+							Yorum Ekle
+						</button>
+					</div>
+				</div>
+				<div class="comments-list-section">
+					<div class="comments-list-header">
+						<h4>Yorumlar (<span id="comments-count">0</span>)</h4>
+					</div>
+					<div class="comments-list" id="comments-list">
+						<!-- Yorumlar burada listelenecek -->
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Comment Delete Confirmation Modal -->
+	<div id="comment-delete-modal" class="modal-overlay d-none">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Yorum Silme Onayı</h3>
+				<button class="modal-close" onclick="closeCommentDeleteModal()">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<p>Bu yorumu silmek istediğinizden emin misiniz?</p>
+			</div>
+			<div class="modal-footer">
+				<button class="modal-btn modal-btn-cancel" onclick="closeCommentDeleteModal()">İptal</button>
+				<button class="modal-btn modal-btn-danger" onclick="confirmCommentDelete()">Sil</button>
+			</div>
+		</div>
+	</div>
+	<!-- Note Background Color Modal -->
+	<div id="note-bg-color-modal" class="modal-overlay d-none">
+		<div class="modal-content note-bg-color-modal">
+			<div class="modal-header">
+				<h3>Not Arka Plan Rengi</h3>
+				<button class="modal-close" onclick="closeNoteBgColorModal()">
+					<i class="bi bi-x"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="color-section">
+					<div class="color-header">
+						<label>Arka Plan Rengi:</label>
+						<button type="button" class="clear-btn" id="note-bg-modal-clear" title="Arka plan rengini temizle">
+							<i class="bi bi-eraser-fill"></i>
+						</button>
+					</div>
+					<div class="color-picker">
+						<div class="color-swatches palette-v2" id="note-bg-modal-colors">
+							<!-- Colors will be populated by JavaScript -->
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Dexie Library (must load before db.js) -->
+	<script src="/Content/db/dexie.js"></script>
+	<!-- Database Module -->
+	<script src="/Content/db/db.js"></script>
+	<!-- Main Editor Script -->
+	<script type="module" src="/Content/editor/editor.js"></script>
+	<!-- Production -->
+	<script src="https://unpkg.com/@popperjs/core@2"></script>
+	<script src="https://unpkg.com/tippy.js@6"></script>
+	<script>
+		tippy('[data-tippy-content]');
+	</script>
+	<!-- SimpleDTP JS -->
+	<script src="/Content/dtp/dtp.js"></script>
+	
+	</body>
+</html>
